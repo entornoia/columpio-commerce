@@ -29,6 +29,8 @@ La ruta autenticada `/catalog-search` permite probar filtros determinísticos so
 
 La ruta protegida `/agent-test` usa Responses API y la herramienta segura `search_catalog`. La clave `OPENAI_API_KEY` es privada y solo se lee en el servidor. El modelo se cambia en `src/lib/agent/config.ts`; el MVP usa `gpt-5.4-mini`. El historial es corto y vive únicamente en memoria del navegador.
 
+El análisis visual del BLOQUE 2B acepta una sola imagen JPEG, PNG o WebP de hasta 5 MB. La imagen se valida y se envía al modelo desde el backend únicamente durante esa solicitud: no se almacena en Supabase ni en otro servicio del proyecto. La conversación conserva en memoria solo los atributos estructurados y los elimina al iniciar una conversación nueva.
+
 ## Getting Started
 
 First, run the development server:
