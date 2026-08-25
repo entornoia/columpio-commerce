@@ -65,7 +65,7 @@ export function validateGarmentAnalysis(value: unknown): GarmentAnalysis {
 }
 
 export function isGarmentAnalysisUnclear(analysis: GarmentAnalysis) {
-  return !analysis.garmentType || analysis.confidenceNotes.some((note) => /(muy\s+)?(borros|desenfoc)|no se distingu|no permite identificar|no identificable/i.test(note));
+  return !analysis.garmentType || /no identificable/i.test(analysis.garmentType) || analysis.confidenceNotes.some((note) => /(muy\s+)?(borros|desenfoc)|no (?:se |permite )?(?:distingu|identific)|no identificable/i.test(note));
 }
 
 export async function analyzeGarmentImage(openai: OpenAI, image: GarmentImage) {

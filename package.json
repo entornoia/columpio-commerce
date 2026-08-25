@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:instagram": "node --experimental-strip-types --test tests/instagram-channel.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
