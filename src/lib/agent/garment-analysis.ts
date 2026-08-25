@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { ALLOWED_GARMENT_IMAGE_TYPES, MAX_GARMENT_IMAGE_BYTES, SELLER_AGENT_MODEL } from "./config";
+import { ALLOWED_GARMENT_IMAGE_TYPES, garmentVisionModel, MAX_GARMENT_IMAGE_BYTES } from "./config";
 
 export type GarmentAnalysis = {
   garmentType: string | null;
@@ -18,6 +18,7 @@ export type GarmentAnalysis = {
 };
 
 export type GarmentImage = { dataUrl: string; mimeType: typeof ALLOWED_GARMENT_IMAGE_TYPES[number]; size: number };
+export type TemporaryGarment = GarmentAnalysis & { id: string };
 
 const garmentSchema = {
   type: "object",
@@ -68,13 +69,37 @@ export function isGarmentAnalysisUnclear(analysis: GarmentAnalysis) {
 }
 
 export async function analyzeGarmentImage(openai: OpenAI, image: GarmentImage) {
+  const model = garmentVisionModel();
   const response = await openai.responses.create({
-    model: SELLER_AGENT_MODEL,
+    model,
     instructions: "Analiza solo la prenda principal útil para la consulta comercial. Describe observaciones visuales prudentes. No infieras talla, cuerpo, edad, peso, marca, precio, autenticidad ni composición exacta. Todo material y fit deben indicarse como aparentes. Si hay varias prendas o la imagen es dudosa, regístralo en confidenceNotes. Responde en español.",
     input: [{ role: "user", content: [{ type: "input_text", text: "Extrae los atributos visuales estructurados de la prenda principal." }, { type: "input_image", image_url: image.dataUrl, detail: "auto" }] }],
     text: { format: { type: "json_schema", name: "garment_analysis", strict: true, schema: garmentSchema } },
     store: false,
     max_output_tokens: 700,
   });
-  return { analysis: validateGarmentAnalysis(JSON.parse(response.output_text)), usage: response.usage };
+  return { analysis: validateGarmentAnalysis(JSON.parse(response.output_text)), usage: response.usage, model };
+}
+
+export function validateTemporaryCloset(value: unknown): TemporaryGarment[] {
+  if (!Array.isArray(value) || value.length < 2 || value.length > 4) throw new Error("El mini-closet debe contener entre 2 y 4 prendas.");
+  return value.map((entry) => {
+    if (!entry || typeof entry !== "object" || typeof (entry as Record<string, unknown>).id !== "string") throw new Error("El mini-closet no es válido.");
+    return { id: String((entry as Record<string, unknown>).id).slice(0, 40), ...validateGarmentAnalysis(entry) };
+  });
+}
+
+export async function analyzeGarmentImages(openai: OpenAI, images: GarmentImage[]) {
+  const model = garmentVisionModel();
+  const itemSchema = { ...garmentSchema, properties: { id: { type: "string" }, ...garmentSchema.properties }, required: ["id", ...garmentSchema.required] };
+  const response = await openai.responses.create({
+    model,
+    instructions: "Analiza por separado cada imagen, en el orden recibido. Devuelve exactamente una prenda por imagen con id garment-1, garment-2, etc. No infieras talla, cuerpo, edad, peso, marca, precio, autenticidad ni composición exacta. Registra toda incertidumbre en confidenceNotes. Responde en español.",
+    input: [{ role: "user", content: [{ type: "input_text", text: `Analiza estas ${images.length} imágenes una sola vez y crea el mini-closet estructurado.` }, ...images.map((image) => ({ type: "input_image" as const, image_url: image.dataUrl, detail: "auto" as const }))] }],
+    text: { format: { type: "json_schema", name: "temporary_closet", strict: true, schema: { type: "object", additionalProperties: false, properties: { garments: { type: "array", minItems: images.length, maxItems: images.length, items: itemSchema } }, required: ["garments"] } } },
+    store: false,
+    max_output_tokens: 1800,
+  });
+  const parsed = JSON.parse(response.output_text) as { garments?: unknown };
+  return { garments: validateTemporaryCloset(parsed.garments), usage: response.usage, model };
 }

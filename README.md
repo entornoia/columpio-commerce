@@ -31,6 +31,8 @@ La ruta protegida `/agent-test` usa Responses API y la herramienta segura `searc
 
 El análisis visual del BLOQUE 2B acepta una sola imagen JPEG, PNG o WebP de hasta 5 MB. La imagen se valida y se envía al modelo desde el backend únicamente durante esa solicitud: no se almacena en Supabase ni en otro servicio del proyecto. La conversación conserva en memoria solo los atributos estructurados y los elimina al iniciar una conversación nueva.
 
+El mini-closet temporal del BLOQUE 2C se habilita con `ENABLE_MULTI_GARMENT_STYLING=true`. Analiza de 2 a 4 imágenes juntas en una sola llamada visual y conserva únicamente atributos estructurados en memoria; las preguntas posteriores no reenvían fotos. `GARMENT_VISION_MODEL` permite comparar `gpt-5.4-mini` (baseline) con `gpt-5.4-nano` sin cambiar la lógica. El costo mostrado en desarrollo es una estimación por tokens basada en tarifas centralizadas y puede no coincidir exactamente con la factura final.
+
 ## Getting Started
 
 First, run the development server:
