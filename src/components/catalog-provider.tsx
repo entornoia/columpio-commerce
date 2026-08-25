@@ -29,6 +29,20 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const supabase = createClient();
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData.user) {
+      setProducts([]);
+      setError("La sesión administrativa no es válida. Vuelve a iniciar sesión.");
+      setReady(true);
+      return;
+    }
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+    if (claimsError || claimsData?.claims?.role !== "authenticated") {
+      setProducts([]);
+      setError("La sesión no tiene el rol authenticated requerido para consultar el catálogo.");
+      setReady(true);
+      return;
+    }
     const { data, error: queryError } = await supabase
       .from("products")
       .select("*, product_variants(*), product_images(*)")

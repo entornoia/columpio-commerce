@@ -21,6 +21,10 @@ Supabase es la fuente única de verdad. La aplicación no usa `localStorage`, da
 
 La migración 002 habilita RLS, revoca todos los privilegios de `anon` y concede CRUD únicamente a `authenticated`. La función `save_catalog_product` usa `security invoker`, por lo que respeta esas mismas políticas y guarda producto, variantes e imágenes en una sola transacción.
 
+## Búsqueda estructurada
+
+La ruta autenticada `/catalog-search` permite probar filtros determinísticos sobre el catálogo real. La función reusable `searchCatalog(client, filters)` vive en `src/lib/catalog-search.ts`, separada de React, y devuelve únicamente variantes compatibles y su stock total. Puede reutilizarse desde una API route, Server Action o herramienta futura sin incorporar IA.
+
 ## Getting Started
 
 First, run the development server:
