@@ -24,6 +24,7 @@ export async function updateSession(request: NextRequest) {
   const isLogin = request.nextUrl.pathname === "/login";
 
   if (!data?.claims && !isLogin) {
+    if (request.nextUrl.pathname.startsWith("/api/")) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
     const urlToLogin = request.nextUrl.clone();
     urlToLogin.pathname = "/login";
     return NextResponse.redirect(urlToLogin);
@@ -37,4 +38,3 @@ export async function updateSession(request: NextRequest) {
 
   return response;
 }
-

@@ -25,6 +25,10 @@ La migración 002 habilita RLS, revoca todos los privilegios de `anon` y concede
 
 La ruta autenticada `/catalog-search` permite probar filtros determinísticos sobre el catálogo real. La función reusable `searchCatalog(client, filters)` vive en `src/lib/catalog-search.ts`, separada de React, y devuelve únicamente variantes compatibles y su stock total. Puede reutilizarse desde una API route, Server Action o herramienta futura sin incorporar IA.
 
+## Agente vendedor interno
+
+La ruta protegida `/agent-test` usa Responses API y la herramienta segura `search_catalog`. La clave `OPENAI_API_KEY` es privada y solo se lee en el servidor. El modelo se cambia en `src/lib/agent/config.ts`; el MVP usa `gpt-5.4-mini`. El historial es corto y vive únicamente en memoria del navegador.
+
 ## Getting Started
 
 First, run the development server:
