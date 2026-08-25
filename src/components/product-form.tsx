@@ -14,11 +14,13 @@ export function ProductForm({ product }: { product?: Product }) {
   const { saveProduct } = useCatalog();
   const [form, setForm] = useState<ProductInput>(product ? { ...product, variants: product.variants.map((item) => ({ ...item })), occasions: [...product.occasions] } : emptyProduct);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
   const set = <K extends keyof ProductInput>(key: K, value: ProductInput[K]) => setForm((current) => ({ ...current, [key]: value }));
   const updateVariant = (id: string, key: keyof Variant, value: string | number | boolean) => set("variants", form.variants.map((item) => item.id === id ? { ...item, [key]: value } : item));
-  const submit = (event: FormEvent) => {
-    event.preventDefault(); setError("");
-    const result = saveProduct(form, product?.id);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault(); setError(""); setSaving(true);
+    const result = await saveProduct(form, product?.id);
+    setSaving(false);
     if (!result.ok) return setError(result.message);
     router.push("/productos");
   };
@@ -47,7 +49,6 @@ export function ProductForm({ product }: { product?: Product }) {
     <section className="form-section"><div className="section-heading"><span>03</span><div><h2>Imágenes y estado</h2><p>Estructura preparada para URLs de imágenes de Supabase Storage.</p></div></div>
       <div className="form-grid"><label className="span-2">URL de imagen principal <input type="url" value={form.images[0]?.imageUrl ?? ""} onChange={(e) => set("images", e.target.value ? [{ id: form.images[0]?.id ?? crypto.randomUUID(), imageUrl: e.target.value, position: 0, altText: form.name }] : [])} placeholder="https://..." /></label><label className="toggle-label"><input type="checkbox" checked={form.active} onChange={(e) => set("active", e.target.checked)} /><span/> Producto activo</label></div>
     </section>
-    <div className="form-actions"><button type="button" className="text-button" onClick={() => router.back()}>Cancelar</button><button className="primary-button" type="submit">{product ? "Guardar cambios" : "Crear producto"}<Icon name="arrow" size={18}/></button></div>
+    <div className="form-actions"><button type="button" className="text-button" onClick={() => router.back()}>Cancelar</button><button className="primary-button" type="submit" disabled={saving}>{saving ? "Guardando…" : product ? "Guardar cambios" : "Crear producto"}<Icon name="arrow" size={18}/></button></div>
   </form>;
 }
-

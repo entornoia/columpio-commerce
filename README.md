@@ -9,16 +9,17 @@ pnpm install
 pnpm dev
 ```
 
-La aplicación funciona inicialmente con datos de demostración persistidos en `localStorage`, de modo que altas y ediciones pueden probarse sin servicios externos.
+Supabase es la fuente única de verdad. La aplicación no usa `localStorage`, datos demo ni fallback silencioso para el catálogo.
 
 ## Supabase
 
 1. Crea un proyecto nuevo y exclusivo para Columpio Commerce.
-2. Ejecuta `supabase/migrations/001_catalog.sql` en el SQL Editor.
+2. Ejecuta `supabase/migrations/001_catalog.sql` y `supabase/migrations/002_auth_rls_and_catalog_rpc.sql` en el SQL Editor, en ese orden.
 3. Opcionalmente ejecuta `supabase/seed.sql` para cargar datos de ejemplo.
-4. Copia `.env.example` a `.env.local` y completa las credenciales del proyecto.
+4. Copia `.env.example` a `.env.local` y completa `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY` desde **Project Settings → API**.
+5. En **Authentication → Users**, crea manualmente el único usuario administrador con correo y contraseña. No habilites registro público en la aplicación.
 
-La conexión remota se integrará cuando exista el proyecto Supabase. El esquema ya define relaciones, SKU únicos y stock no negativo.
+La migración 002 habilita RLS, revoca todos los privilegios de `anon` y concede CRUD únicamente a `authenticated`. La función `save_catalog_product` usa `security invoker`, por lo que respeta esas mismas políticas y guarda producto, variantes e imágenes en una sola transacción.
 
 ## Getting Started
 

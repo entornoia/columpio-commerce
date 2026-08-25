@@ -1,50 +1,67 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
-import { seedProducts } from "@/lib/seed";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { Product, ProductInput } from "@/lib/types";
+import { mapProduct, toRpcPayload } from "@/lib/catalog";
+import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 type CatalogContextValue = {
   products: Product[];
   ready: boolean;
-  saveProduct: (input: ProductInput, id?: string) => { ok: true; id: string } | { ok: false; message: string };
+  error: string;
+  refresh: () => Promise<void>;
+  saveProduct: (input: ProductInput, id?: string) => Promise<{ ok: true; id: string } | { ok: false; message: string }>;
 };
 
 const CatalogContext = createContext<CatalogContextValue | null>(null);
-const storageKey = "columpio-commerce-products-v1";
-
 export function CatalogProvider({ children }: { children: React.ReactNode }) {
-  const [products, setProducts] = useState<Product[]>(seedProducts);
+  const [products, setProducts] = useState<Product[]>([]);
   const [ready, setReady] = useState(false);
+  const [error, setError] = useState("");
 
-  useEffect(() => {
-    queueMicrotask(() => {
-      const stored = window.localStorage.getItem(storageKey);
-      if (stored) {
-        try { setProducts(JSON.parse(stored) as Product[]); } catch { window.localStorage.removeItem(storageKey); }
-      }
+  const refresh = useCallback(async () => {
+    setError("");
+    if (!isSupabaseConfigured()) {
+      setProducts([]);
+      setError("Falta configurar la conexión a Supabase en .env.local.");
       setReady(true);
-    });
+      return;
+    }
+    const supabase = createClient();
+    const { data, error: queryError } = await supabase
+      .from("products")
+      .select("*, product_variants(*), product_images(*)")
+      .order("created_at", { ascending: false });
+    if (queryError) {
+      setProducts([]);
+      setError(`No se pudo cargar el catálogo: ${queryError.message}`);
+    } else {
+      setProducts((data ?? []).map((row) => mapProduct(row as never)));
+    }
+    setReady(true);
   }, []);
 
-  useEffect(() => { if (ready) window.localStorage.setItem(storageKey, JSON.stringify(products)); }, [products, ready]);
+  useEffect(() => { queueMicrotask(() => void refresh()); }, [refresh]);
 
-  const saveProduct: CatalogContextValue["saveProduct"] = (input, id) => {
-    const sku = input.sku.trim().toUpperCase();
+  const saveProduct: CatalogContextValue["saveProduct"] = async (input, id) => {
     const variants = input.variants.map((item) => ({ ...item, variantSku: item.variantSku.trim().toUpperCase(), stock: Number(item.stock) }));
-    if (products.some((product) => product.id !== id && product.sku.toUpperCase() === sku)) return { ok: false, message: "El SKU del producto ya existe." };
     const variantSkus = variants.map((item) => item.variantSku);
     if (new Set(variantSkus).size !== variantSkus.length) return { ok: false, message: "Los SKU de variantes no pueden repetirse." };
-    if (products.some((product) => product.id !== id && product.variants.some((item) => variantSkus.includes(item.variantSku.toUpperCase())))) return { ok: false, message: "Uno de los SKU de variante ya existe en el catálogo." };
     if (variants.some((item) => item.stock < 0 || !Number.isInteger(item.stock))) return { ok: false, message: "El stock debe ser un número entero igual o mayor que cero." };
-    const timestamp = new Date().toISOString();
-    const productId = id ?? crypto.randomUUID();
-    const product: Product = { ...input, sku, variants, id: productId, createdAt: products.find((item) => item.id === id)?.createdAt ?? timestamp, updatedAt: timestamp };
-    setProducts((current) => id ? current.map((item) => item.id === id ? product : item) : [product, ...current]);
-    return { ok: true, id: productId };
+    if (!isSupabaseConfigured()) return { ok: false, message: "Falta configurar Supabase en .env.local." };
+    const supabase = createClient();
+    const { data, error: saveError } = await supabase.rpc("save_catalog_product", toRpcPayload({ ...input, variants }, id));
+    if (saveError) {
+      if (saveError.code === "23505") return { ok: false, message: "El SKU de producto o de variante ya existe." };
+      if (saveError.code === "23514") return { ok: false, message: "Precio, stock o posición contienen un valor no permitido." };
+      return { ok: false, message: `No se pudo guardar: ${saveError.message}` };
+    }
+    await refresh();
+    return { ok: true, id: String(data) };
   };
 
-  return <CatalogContext.Provider value={{ products, ready, saveProduct }}>{children}</CatalogContext.Provider>;
+  return <CatalogContext.Provider value={{ products, ready, error, refresh, saveProduct }}>{children}</CatalogContext.Provider>;
 }
 
 export function useCatalog() {
