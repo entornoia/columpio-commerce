@@ -3,6 +3,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseConfig, isSupabaseConfigured } from "./config";
 
 export async function updateSession(request: NextRequest) {
+  // Meta debe poder verificar y entregar eventos sin una sesión administrativa.
+  // El POST mantiene su autenticación propia mediante X-Hub-Signature-256.
+  if (request.nextUrl.pathname === "/api/webhooks/instagram") {
+    return NextResponse.next({ request });
+  }
+
   if (!isSupabaseConfigured()) return NextResponse.next({ request });
 
   let response = NextResponse.next({ request });
