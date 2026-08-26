@@ -3,7 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getInstagramConfig, requireInstagramWebhookConfig } from "@/lib/channels/instagram/config";
 import { processInstagramPayload } from "@/lib/channels/instagram/processor";
 import { sendInstagramText } from "@/lib/channels/instagram/sender";
-import { verifyMetaSignature, verifyWebhookToken } from "@/lib/channels/instagram/security";
+import { inspectMetaSignature, verifyWebhookToken } from "@/lib/channels/instagram/security";
+import { instagramDevLog } from "@/lib/channels/instagram/logging";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -20,14 +21,17 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   let config;
   try { config = requireInstagramWebhookConfig(); } catch { return Response.json({ error: "Canal no configurado." }, { status: 503 }); }
-  const rawBody = await request.text();
-  if (!verifyMetaSignature(rawBody, request.headers.get("x-hub-signature-256"), config.appSecret)) return Response.json({ error: "Firma inválida." }, { status: 401 });
+  const rawBody = Buffer.from(await request.arrayBuffer());
+  const signature = inspectMetaSignature(rawBody, request.headers.get("x-hub-signature-256"), config.appSecret);
+  instagramDevLog("signature", signature.diagnostics);
+  if (!signature.match) return Response.json({ error: "Firma inválida." }, { status: 401 });
+  instagramDevLog("webhook accepted", { rawBodyBytes: rawBody.length });
   let payload: unknown;
-  try { payload = JSON.parse(rawBody); } catch { return Response.json({ error: "JSON inválido." }, { status: 400 }); }
+  try { payload = JSON.parse(rawBody.toString("utf8")); } catch { return Response.json({ error: "JSON inválido." }, { status: 400 }); }
   const ownAccountId = getInstagramConfig().accountId;
   after(async () => {
     try { await processInstagramPayload(payload, ownAccountId, { supabase: createAdminClient(), sendText: sendInstagramText }); }
-    catch (error) { console.error("[instagram] webhook_async_failed", { error: error instanceof Error ? error.message : "Error interno" }); }
+    catch (error) { instagramDevLog("webhook async failed", { error: error instanceof Error ? error.message : "Error interno" }, "error"); }
   });
   return Response.json({ received: true });
 }

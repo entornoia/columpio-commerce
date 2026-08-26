@@ -10,7 +10,8 @@ import { CatalogProvider } from "./catalog-provider";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  if (pathname === "/login") return children;
+  const publicPages = ["/login", "/privacy", "/terms", "/data-deletion"];
+  if (publicPages.includes(pathname)) return children;
   async function logout() {
     await createClient().auth.signOut();
     router.replace("/login");

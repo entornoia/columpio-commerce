@@ -17,7 +17,7 @@ META_GRAPH_API_VERSION=v25.0
 
 - `SUPABASE_SERVICE_ROLE_KEY`: Settings → API Keys en Supabase. Es necesaria porque el webhook no tiene la cookie del administrador y debe leer el catálogo desde backend. Nunca usarla en código cliente.
 - `META_WEBHOOK_VERIFY_TOKEN`: texto aleatorio largo creado por nosotros; debe coincidir en Meta y el servidor.
-- `META_APP_SECRET`: App settings → Basic. El servidor lo usa para HMAC, no es el verify token.
+- `META_APP_SECRET`: **Instagram → API setup with Instagram login**, bloque que muestra `Instagram App ID` y `Instagram App Secret`; pulsar **Show** junto a `Instagram App Secret`. Para este flujo no usar el secreto principal de **App settings → Basic**. El servidor lo usa para HMAC y no es el verify token.
 - `META_INSTAGRAM_ACCESS_TOKEN`: token de la cuenta profesional con los permisos indicados abajo.
 - `META_INSTAGRAM_ACCOUNT_ID`: ID numérico de la cuenta profesional (`IG_ID`), no el username ni el IGSID de una clienta.
 - `META_GRAPH_API_VERSION`: versión vigente elegida en Meta. El ejemplo se preparó para `v25.0`; confirmarla antes de conectar producción.

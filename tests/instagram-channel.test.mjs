@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
-import { parseInstagramWebhook } from "../src/lib/channels/instagram/parser.ts";
+import { parseInstagramWebhook, parseInstagramWebhookWithDiagnostics } from "../src/lib/channels/instagram/parser.ts";
 import { verifyMetaSignature, verifyWebhookToken } from "../src/lib/channels/instagram/security.ts";
 import { ConversationStore, IdempotencyStore } from "../src/lib/channels/instagram/stores.ts";
 
@@ -22,6 +22,14 @@ test("conserva contexto de historia sin convertirlo en disponibilidad", () => {
   const story = structuredClone(payload);
   story.entry[0].messaging[0].message.reply_to = { story: { id: "story-1", url: "https://lookaside.fbsbx.com/story" } };
   assert.deepEqual(parseInstagramWebhook(story, "business-1")[0].metadata, { storyUrl: "https://lookaside.fbsbx.com/story", storyId: "story-1" });
+});
+
+test("identifica explícitamente un evento read real como no procesable", () => {
+  const readPayload = { object: "instagram", entry: [{ time: 1_700_000_000, id: "business-1", messaging: [{ read: { mid: "mid-read" } }] }] };
+  assert.deepEqual(parseInstagramWebhookWithDiagnostics(readPayload, "business-1"), {
+    messages: [],
+    ignored: [{ reason: "unsupported_event:read", eventTypes: ["read"] }],
+  });
 });
 
 test("valida HMAC SHA-256 sobre el cuerpo crudo", () => {

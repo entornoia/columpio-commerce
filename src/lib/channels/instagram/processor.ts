@@ -1,11 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { runSellerAgent } from "../../agent/runner";
 import { fetchInstagramImage } from "./image";
-import { parseInstagramWebhook } from "./parser";
+import { parseInstagramWebhookWithDiagnostics } from "./parser";
 import { instagramConversations, instagramEvents, instagramIdempotency } from "./stores";
 import type { IncomingCommerceMessage } from "./types";
+import { instagramDevLog } from "./logging";
 
 const HUMAN_MESSAGE = "Voy a derivar esta conversación para que la revise una persona del equipo. No puedo confirmar por este medio cobros, devoluciones ni situaciones sensibles.";
+
+function maskedId(id: string) { return id.length > 6 ? `${id.slice(0, 3)}…${id.slice(-3)}` : "***"; }
 
 function requiresHuman(text: string | null) {
   return Boolean(text && /\b(hablar con (?:una )?persona|humano|ejecutiv[oa]|reclamo|devol\w*|reembolso|cobr\w*|pago duplicado|fraude|demanda|legal)\b/i.test(text));
@@ -29,11 +32,13 @@ export type InstagramProcessorDependencies = {
 export async function processIncomingInstagramMessage(message: IncomingCommerceMessage, dependencies: InstagramProcessorDependencies) {
   const startedAt = Date.now();
   if (!instagramIdempotency.claim(message.eventId)) {
+    instagramDevLog("event ignored", { reason: "duplicate", sender: maskedId(message.externalUserId) });
     instagramEvents.add({ eventId: message.eventId, externalUserId: message.externalUserId, status: "duplicate", receivedAt: message.receivedAt });
     return { status: "duplicate" as const };
   }
   instagramEvents.add({ eventId: message.eventId, externalUserId: message.externalUserId, status: "received", receivedAt: message.receivedAt });
   const conversation = instagramConversations.get(message.externalUserId);
+  instagramDevLog("context recovered", { sender: maskedId(message.externalUserId), messageCount: conversation.messages.length, needsHuman: conversation.needsHuman });
   try {
     if (conversation.needsHuman || requiresHuman(message.text)) {
       conversation.needsHuman = true;
@@ -45,7 +50,9 @@ export async function processIncomingInstagramMessage(message: IncomingCommerceM
     const userText = message.text ?? "Recomiéndame algo que combine con la prenda de la imagen.";
     const messages = [...conversation.messages, { role: "user" as const, content: userText }];
     const image = message.imageUrl ? await (dependencies.fetchImage ?? fetchInstagramImage)(message.imageUrl) : undefined;
+    instagramDevLog("agent started", { sender: maskedId(message.externalUserId), hasText: Boolean(message.text), hasImage: Boolean(image) });
     const result = await runSellerAgent(dependencies.supabase, { messages, image, garmentAnalysis: image ? undefined : conversation.garmentAnalysis });
+    instagramDevLog("agent completed", { sender: maskedId(message.externalUserId), toolCalls: result.debug.toolCalls, searches: result.debug.searches.length });
     const responseText = formatInstagramResponse(result.message);
     await dependencies.sendText(message.externalUserId, responseText);
     instagramConversations.set(message.externalUserId, { messages: [...messages, { role: "assistant", content: responseText }], garmentAnalysis: result.garmentAnalysis, needsHuman: false });
@@ -55,13 +62,16 @@ export async function processIncomingInstagramMessage(message: IncomingCommerceM
     instagramIdempotency.release(message.eventId);
     const safeError = error instanceof Error ? error.message : "Error interno";
     instagramEvents.add({ eventId: message.eventId, externalUserId: message.externalUserId, status: "failed", receivedAt: message.receivedAt, durationMs: Date.now() - startedAt, error: safeError });
-    console.error("[instagram] processing_failed", { eventId: message.eventId, externalUserId: message.externalUserId, durationMs: Date.now() - startedAt, error: safeError });
+    instagramDevLog("processing failed", { eventId: message.eventId, sender: maskedId(message.externalUserId), durationMs: Date.now() - startedAt, error: safeError }, "error");
     throw error;
   }
 }
 
 export async function processInstagramPayload(payload: unknown, ownAccountId: string | undefined, dependencies: InstagramProcessorDependencies) {
-  const messages = parseInstagramWebhook(payload, ownAccountId);
+  const parsed = parseInstagramWebhookWithDiagnostics(payload, ownAccountId);
+  const messages = parsed.messages;
+  instagramDevLog("events parsed", { accepted: messages.length, ignored: parsed.ignored.length });
+  for (const event of parsed.ignored) instagramDevLog("event ignored", event);
   const results = [];
   for (const message of messages) results.push(await processIncomingInstagramMessage(message, dependencies));
   return { accepted: messages.length, results };
