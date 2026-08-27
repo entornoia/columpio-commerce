@@ -32,14 +32,21 @@ Reiniciar `pnpm dev` después de cambiar `.env.local`.
 4. En Instagram → API setup / Business Login, agregar la cuenta como tester mientras la app permanezca en Development. La cuenta debe aceptar la invitación desde Instagram.
 5. Solicitar/autorizar exactamente `instagram_business_basic` y `instagram_business_manage_messages`. Para una sola cuenta propia en desarrollo pueden usarse roles/testers; para usuarias/cuentas fuera de roles, completar App Review y Business Verification cuando Meta lo solicite.
 6. Generar el access token para la cuenta profesional, obtener su `IG_ID` y guardarlos únicamente en las variables anteriores. Antes de producción, usar el mecanismo de token duradero que ofrezca el panel y documentar su renovación.
-7. Exponer temporalmente `http://localhost:3000` mediante un túnel HTTPS con URL estable, o usar una URL HTTPS de preview autorizada. No se puede registrar una callback localhost directamente en Meta.
+7. Para pruebas locales puede exponerse `http://localhost:3000` mediante un túnel HTTPS. En producción, el webhook estable de Columpio Commerce es `https://columpio-commerce.vercel.app/api/webhooks/instagram`.
 8. En Webhooks de Instagram configurar:
-   - Callback URL: `https://TU-HOST/api/webhooks/instagram`
+   - Callback URL de producción: `https://columpio-commerce.vercel.app/api/webhooks/instagram`
    - Verify token: el valor exacto de `META_WEBHOOK_VERIFY_TOKEN`
    - Campo mínimo: `messages`
    - Campo opcional futuro: `messaging_postbacks` (el parser actual ignora postbacks comerciales no implementados).
 9. Suscribir la app a los webhooks de la cuenta profesional desde Instagram API setup. Enviar un evento de prueba y confirmar HTTP 200.
 10. Desde una segunda cuenta de Instagram, iniciar el DM a Columpio y probar primero texto. La Send API solo responde a una persona que inició la conversación; las respuestas normales deben ocurrir dentro de la ventana de 24 horas.
+
+## Cierre en Vercel
+
+1. Configurar manualmente en Vercel las variables server-side enumeradas arriba; no incorporarlas al código ni exponerlas con el prefijo `NEXT_PUBLIC_`.
+2. Desplegar la rama `main` y comprobar que el GET de verificación responde el challenge exacto con HTTP 200 usando el verify token configurado.
+3. Solo después de esa comprobación, reemplazar en Meta la callback temporal por `https://columpio-commerce.vercel.app/api/webhooks/instagram`.
+4. Confirmar un POST firmado real y un DM completo antes de retirar el túnel local.
 
 ## Seguridad y operación
 
