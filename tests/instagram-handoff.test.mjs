@@ -1,18 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { automationModeValues } from "../src/lib/channels/instagram/conversation-repository.ts";
-import { runWithConversationHandoff } from "../src/lib/channels/instagram/handoff.ts";
+import { isInstagramAgentGloballyEnabled, runWithConversationHandoff } from "../src/lib/channels/instagram/handoff.ts";
 
 const message = { channel: "instagram", externalUserId: "user-1", eventId: "mid-1", receivedAt: "2026-08-26T12:00:00.000Z" };
 const active = { agentEnabled: true, humanOnly: false };
 const temporaryHuman = { agentEnabled: false, humanOnly: false };
 const alwaysHuman = { agentEnabled: false, humanOnly: true };
 
+process.env.INSTAGRAM_AGENT_ENABLED = "true";
+
 function memoryControl(initial = {}, durableStates = new Map(Object.entries(initial))) {
+  let registrations = 0;
   return {
     states: durableStates,
+    get registrations() { return registrations; },
     control: {
-      async registerIncoming(value) { if (!durableStates.has(value.externalUserId)) durableStates.set(value.externalUserId, { ...active }); },
+      async registerIncoming(value) { registrations += 1; if (!durableStates.has(value.externalUserId)) durableStates.set(value.externalUserId, { ...active }); },
       async getAutomationState(_channel, externalUserId) {
         const state = durableStates.get(externalUserId);
         if (!state) throw new Error("missing state");
@@ -24,7 +28,7 @@ function memoryControl(initial = {}, durableStates = new Map(Object.entries(init
 
 test("una conversación nueva queda activa y responde", async () => {
   const memory = memoryControl(); let sent = 0;
-  const outcome = await runWithConversationHandoff({ control: memory.control, message, generate: async () => "respuesta", send: async () => { sent += 1; } });
+  const outcome = await runWithConversationHandoff({ control: memory.control, message, globalEnabled: () => true, generate: async () => "respuesta", send: async () => { sent += 1; } });
   assert.deepEqual(memory.states.get("user-1"), active); assert.equal(outcome.status, "sent"); assert.equal(sent, 1);
 });
 
@@ -109,4 +113,49 @@ test("un error al consultar el perfil no interrumpe agente ni Send API", async (
   const memory = memoryControl({ "user-1": active }); let generated = 0; let sent = 0;
   const outcome = await runWithConversationHandoff({ control: memory.control, message, background: async () => { throw new Error("Meta unavailable"); }, generate: async () => { generated += 1; return "respuesta"; }, send: async () => { sent += 1; } });
   assert.equal(outcome.status, "sent"); assert.deepEqual({ generated, sent }, { generated: 1, sent: 1 });
+});
+
+test("INSTAGRAM_AGENT_ENABLED=false bloquea IA, catálogo y Send API, pero registra actividad", async () => {
+  const memory = memoryControl({ "user-1": active }); let generated = 0; let searched = 0; let sent = 0;
+  const outcome = await runWithConversationHandoff({ control: memory.control, message, globalEnabled: () => false, generate: async () => { generated += 1; searched += 1; return "respuesta"; }, send: async () => { sent += 1; } });
+  assert.deepEqual(outcome, { status: "paused", reason: "global_disabled" });
+  assert.equal(memory.registrations, 1);
+  assert.deepEqual({ generated, searched, sent }, { generated: 0, searched: 0, sent: 0 });
+  assert.deepEqual(memory.states.get("user-1"), active);
+});
+
+test("el switch activo permite aplicar el handoff individual normal", async () => {
+  const memory = memoryControl({ "user-1": temporaryHuman }); let generated = 0;
+  const outcome = await runWithConversationHandoff({ control: memory.control, message, globalEnabled: () => true, generate: async () => { generated += 1; return "respuesta"; }, send: async () => undefined });
+  assert.deepEqual(outcome, { status: "paused", reason: "temporary_human" }); assert.equal(generated, 0);
+});
+
+test("variable ausente y valores inválidos bloquean de forma fail-closed", () => {
+  const previous = process.env.INSTAGRAM_AGENT_ENABLED;
+  try {
+    delete process.env.INSTAGRAM_AGENT_ENABLED;
+    assert.equal(isInstagramAgentGloballyEnabled(), false);
+    for (const value of ["false", "TRUE", "1", "yes", ""]) {
+      process.env.INSTAGRAM_AGENT_ENABLED = value;
+      assert.equal(isInstagramAgentGloballyEnabled(), false);
+    }
+    process.env.INSTAGRAM_AGENT_ENABLED = "true";
+    assert.equal(isInstagramAgentGloballyEnabled(), true);
+  } finally {
+    if (previous === undefined) delete process.env.INSTAGRAM_AGENT_ENABLED;
+    else process.env.INSTAGRAM_AGENT_ENABLED = previous;
+  }
+});
+
+test("apagar globalmente durante procesamiento impide el envío final", async () => {
+  const memory = memoryControl({ "user-1": active }); let enabled = true; let sent = 0;
+  const outcome = await runWithConversationHandoff({ control: memory.control, message, globalEnabled: () => enabled, generate: async () => { enabled = false; return "respuesta"; }, send: async () => { sent += 1; } });
+  assert.deepEqual(outcome, { status: "paused", reason: "global_disabled" }); assert.equal(sent, 0);
+});
+
+test("el kill switch no cambia human_only ni agent_enabled", async () => {
+  const original = { agentEnabled: false, humanOnly: true };
+  const memory = memoryControl({ "user-1": original });
+  await runWithConversationHandoff({ control: memory.control, message, globalEnabled: () => false, generate: async () => "respuesta", send: async () => undefined });
+  assert.deepEqual(memory.states.get("user-1"), original);
 });

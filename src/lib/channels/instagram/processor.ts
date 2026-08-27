@@ -33,6 +33,7 @@ export type InstagramProcessorDependencies = {
   conversationControl?: InstagramConversationControl;
   runAgent?: typeof runSellerAgent;
   refreshProfile?: (externalUserId: string) => Promise<void>;
+  globalAgentEnabled?: () => boolean;
 };
 
 type GeneratedResponse = {
@@ -59,6 +60,7 @@ export async function processIncomingInstagramMessage(message: IncomingCommerceM
         if (dependencies.refreshProfile) return dependencies.refreshProfile(message.externalUserId);
         await refreshInstagramProfile(dependencies.supabase, message.externalUserId);
       },
+      globalEnabled: dependencies.globalAgentEnabled,
       generate: async (): Promise<GeneratedResponse> => {
         const conversation = instagramConversations.get(message.externalUserId);
         instagramDevLog("context recovered", { sender: maskedId(message.externalUserId), messageCount: conversation.messages.length, needsHuman: conversation.needsHuman });
@@ -80,7 +82,7 @@ export async function processIncomingInstagramMessage(message: IncomingCommerceM
 
     if (outcome.status === "paused") {
       instagramDevLog("event ignored", { reason: outcome.reason, sender: maskedId(message.externalUserId) });
-      const status = outcome.reason === "human_only" ? "human_only" as const : "paused" as const;
+      const status = outcome.reason === "global_disabled" ? "global_disabled" as const : outcome.reason === "human_only" ? "human_only" as const : "paused" as const;
       instagramEvents.add({ eventId: message.eventId, externalUserId: message.externalUserId, status, receivedAt: message.receivedAt, durationMs: Date.now() - startedAt });
       return { status, reason: outcome.reason };
     }

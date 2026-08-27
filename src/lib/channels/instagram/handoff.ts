@@ -1,20 +1,26 @@
 import type { IncomingConversationMetadata, InstagramAutomationState, InstagramConversationControl } from "./conversation-repository";
 
+export function isInstagramAgentGloballyEnabled() {
+  return process.env.INSTAGRAM_AGENT_ENABLED === "true";
+}
+
 export type HandoffOutcome<T> =
   | { status: "sent"; value: T }
-  | { status: "paused"; reason: "human_only" | "temporary_human" }
+  | { status: "paused"; reason: "global_disabled" | "human_only" | "temporary_human" }
   | { status: "handoff_error"; error: string };
 
 export async function runWithConversationHandoff<T>({
   control,
   message,
   background,
+  globalEnabled = isInstagramAgentGloballyEnabled,
   generate,
   send,
 }: {
   control: InstagramConversationControl;
   message: IncomingConversationMetadata;
   background?: () => Promise<void>;
+  globalEnabled?: () => boolean;
   generate: () => Promise<T>;
   send: (value: T) => Promise<void>;
 }): Promise<HandoffOutcome<T>> {
@@ -24,6 +30,7 @@ export async function runWithConversationHandoff<T>({
   try {
     await control.registerIncoming(message);
     if (background) backgroundTask = Promise.resolve().then(background).catch(() => undefined);
+    if (!globalEnabled()) { await finishBackground(); return { status: "paused", reason: "global_disabled" }; }
     const reason = blockedReason(await control.getAutomationState(message.channel, message.externalUserId));
     if (reason) { await finishBackground(); return { status: "paused", reason }; }
   } catch (error) {
@@ -34,6 +41,7 @@ export async function runWithConversationHandoff<T>({
   const value = await generate();
 
   try {
+    if (!globalEnabled()) { await finishBackground(); return { status: "paused", reason: "global_disabled" }; }
     const reason = blockedReason(await control.getAutomationState(message.channel, message.externalUserId));
     if (reason) { await finishBackground(); return { status: "paused", reason }; }
   } catch (error) {
