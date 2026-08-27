@@ -21,7 +21,7 @@ export type InstagramConversation = {
 export type InstagramEventLog = {
   eventId: string;
   externalUserId: string;
-  status: "received" | "ignored" | "duplicate" | "processed" | "escalated" | "failed";
+  status: "received" | "ignored" | "duplicate" | "paused" | "human_only" | "handoff_error" | "processed" | "escalated" | "failed";
   receivedAt: string;
   durationMs?: number;
   toolCalls?: number;

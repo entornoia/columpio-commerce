@@ -57,6 +57,16 @@ Reiniciar `pnpm dev` después de cambiar `.env.local`.
 - No se implementan mensajes salientes, campañas ni evasión de la ventana de mensajería. El límite de frecuencia de Meta se reporta como error temporal sin registrar tokens.
 - Las URLs de imagen se aceptan solo por HTTPS desde hosts `*.fbcdn.net` o `*.fbsbx.com`, sin redirecciones, con límite de 5 MB y validación del contenido.
 
+## Handoff humano por conversación
+
+La migración `003_instagram_conversation_handoff.sql` crea el control persistente por usuario externo. Debe ejecutarse en Supabase antes de desplegar el código que la utiliza. El panel protegido `/instagram-conversations` permite pausar y reactivar cada conversación de forma independiente.
+
+La migración aditiva `004_instagram_human_only.sql` incorpora el modo **Siempre humano**. Este modo tiene prioridad sobre la pausa temporal y permanece activo hasta que una persona administradora elige **Volver al agente**.
+
+La migración `005_instagram_conversation_username.sql` agrega una etiqueta visual obtenida server-side mediante `GET /{IGSID}?fields=username`. Solo persiste `instagram_username` y la fecha del último intento; el IGSID continúa siendo la clave técnica y un fallo de perfil nunca bloquea la atención.
+
+Cuando una conversación está pausada, el webhook sigue registrando su última actividad y conserva la idempotencia existente, pero no ejecuta el agente, no consulta el catálogo y no envía respuestas. No se persisten mensajes, imágenes ni historial en esta tabla.
+
 ## Prueba local
 
 Abrir `/instagram-test` con la sesión administrativa. El endpoint `/api/channels/instagram/test` reutiliza parser, contexto, agente y Supabase reales, pero captura la salida en pantalla en lugar de enviarla a Meta. Está disponible solo en desarrollo. Los eventos recientes son memoria efímera y no constituyen un inbox.

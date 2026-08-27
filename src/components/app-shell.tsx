@@ -17,7 +17,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.replace("/login");
     router.refresh();
   }
-  const links = [{ href: "/", label: "Inicio", icon: "home" as const }, { href: "/productos", label: "Productos", icon: "box" as const }, { href: "/catalog-search", label: "Buscar catálogo", icon: "search" as const }, { href: "/agent-test", label: "Agente vendedor", icon: "layers" as const }, { href: "/productos/nuevo", label: "Agregar producto", icon: "plus" as const }];
+  const links = [{ href: "/", label: "Inicio", icon: "home" as const }, { href: "/productos", label: "Productos", icon: "box" as const }, { href: "/catalog-search", label: "Buscar catálogo", icon: "search" as const }, { href: "/agent-test", label: "Agente vendedor", icon: "layers" as const }, { href: "/instagram-conversations", label: "Instagram", icon: "layers" as const }, { href: "/productos/nuevo", label: "Agregar producto", icon: "plus" as const }];
   return <CatalogProvider><div className="app-shell">
     <aside className="sidebar">
       <Link href="/" className="brand"><span className="brand-mark">C</span><span><strong>Columpio</strong><small>COMMERCE</small></span></Link>
