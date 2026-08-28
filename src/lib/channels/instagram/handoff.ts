@@ -1,7 +1,17 @@
-import type { IncomingConversationMetadata, InstagramAutomationState, InstagramConversationControl } from "./conversation-repository";
+import type { IncomingConversationMetadata, InstagramConversationControl } from "./conversation-repository";
 
 export function isInstagramAgentGloballyEnabled() {
   return process.env.INSTAGRAM_AGENT_ENABLED === "true";
+}
+
+export async function getInstagramAutomationBlockReason(
+  control: InstagramConversationControl,
+  externalUserId: string,
+  globalEnabled: () => boolean = isInstagramAgentGloballyEnabled,
+) {
+  if (!globalEnabled()) return "global_disabled" as const;
+  const state = await control.getAutomationState("instagram", externalUserId);
+  return state.humanOnly ? "human_only" as const : !state.agentEnabled ? "temporary_human" as const : null;
 }
 
 export type HandoffOutcome<T> =
@@ -24,14 +34,12 @@ export async function runWithConversationHandoff<T>({
   generate: () => Promise<T>;
   send: (value: T) => Promise<void>;
 }): Promise<HandoffOutcome<T>> {
-  const blockedReason = (state: InstagramAutomationState) => state.humanOnly ? "human_only" as const : !state.agentEnabled ? "temporary_human" as const : null;
   let backgroundTask: Promise<void> = Promise.resolve();
   const finishBackground = async () => { await backgroundTask; };
   try {
     await control.registerIncoming(message);
     if (background) backgroundTask = Promise.resolve().then(background).catch(() => undefined);
-    if (!globalEnabled()) { await finishBackground(); return { status: "paused", reason: "global_disabled" }; }
-    const reason = blockedReason(await control.getAutomationState(message.channel, message.externalUserId));
+    const reason = await getInstagramAutomationBlockReason(control, message.externalUserId, globalEnabled);
     if (reason) { await finishBackground(); return { status: "paused", reason }; }
   } catch (error) {
     await finishBackground();
@@ -41,8 +49,7 @@ export async function runWithConversationHandoff<T>({
   const value = await generate();
 
   try {
-    if (!globalEnabled()) { await finishBackground(); return { status: "paused", reason: "global_disabled" }; }
-    const reason = blockedReason(await control.getAutomationState(message.channel, message.externalUserId));
+    const reason = await getInstagramAutomationBlockReason(control, message.externalUserId, globalEnabled);
     if (reason) { await finishBackground(); return { status: "paused", reason }; }
   } catch (error) {
     await finishBackground();

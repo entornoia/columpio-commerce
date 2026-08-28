@@ -69,6 +69,12 @@ Cuando una conversación está pausada, el webhook sigue registrando su última 
 
 `INSTAGRAM_AGENT_ENABLED` es el kill switch global server-side. Solo el valor exacto `true` habilita respuestas automáticas; `false`, ausencia o cualquier otro valor las bloquean de forma fail-closed. El webhook continúa aceptando eventos y registrando actividad. El switch global se comprueba antes del handoff individual y ambos se vuelven a comprobar inmediatamente antes del envío.
 
+## Carrito conversacional y pedidos
+
+La migración `006_instagram_cart_and_orders.sql` crea carritos, items, pedidos, snapshots e idempotencia persistente. Debe ejecutarse antes de habilitar esta versión del agente en producción. Las tablas tienen RLS habilitado y solo el backend `service_role` puede usar sus RPC.
+
+El agente puede agregar, consultar, quitar y cambiar cantidades únicamente con IDs reales de variantes obtenidos desde Supabase. Al confirmar, el pedido recibe una referencia backend `COL-…` y queda `pending_payment`; no se reserva ni descuenta stock y no se procesa pago. Si cambia un precio, la primera confirmación actualiza el carrito y exige una nueva confirmación en otro mensaje.
+
 ## Prueba local
 
 Abrir `/instagram-test` con la sesión administrativa. El endpoint `/api/channels/instagram/test` reutiliza parser, contexto, agente y Supabase reales, pero captura la salida en pantalla en lugar de enviarla a Meta. Está disponible solo en desarrollo. Los eventos recientes son memoria efímera y no constituyen un inbox.

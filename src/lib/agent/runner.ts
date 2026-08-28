@@ -6,9 +6,14 @@ import { SELLER_AGENT_INSTRUCTIONS } from "./prompt";
 import { analyzeGarmentImage, analyzeGarmentImages, isGarmentAnalysisUnclear, validateGarmentAnalysis, validateGarmentImage, validateTemporaryCloset, type GarmentAnalysis, type TemporaryGarment } from "./garment-analysis";
 import { estimateTokenCostUsd, type TokenUsage } from "./cost";
 import type { CatalogSearchResult } from "../catalog-search";
+import { commerceToolDefinitions } from "../commerce/tool-definitions";
+import { executeCommerceTool, isCommerceToolName } from "../commerce/tools";
+import type { InstagramCommerceContext } from "../commerce/types";
+import { formatCommerceResponse } from "../commerce/response-formatter";
 
 export type AgentChatMessage = { role: "user" | "assistant"; content: string };
 type DebugCall = { intent: string; tool: "search_catalog"; filters: unknown; resultCount: number };
+type CommerceDebugCall = { tool: "add_to_cart" | "view_cart" | "remove_from_cart" | "set_cart_quantity" | "create_order"; status: string };
 
 export type SellerAgentInput = {
   messages: unknown;
@@ -30,6 +35,7 @@ export type SellerAgentResult = {
     temporaryCloset: TemporaryGarment[] | null;
     intent: string | undefined;
     searches: DebugCall[];
+    commerceOperations: CommerceDebugCall[];
     recommendedProducts: { name: string; sku: string }[];
     modelCalls: number;
     toolCalls: number;
@@ -55,7 +61,7 @@ export function validateAgentMessages(value: unknown): AgentChatMessage[] {
   });
 }
 
-export async function runSellerAgent(supabase: SupabaseClient, body: SellerAgentInput): Promise<SellerAgentResult> {
+export async function runSellerAgent(supabase: SupabaseClient, body: SellerAgentInput, commerce?: Omit<InstagramCommerceContext, "supabase">): Promise<SellerAgentResult> {
   if (!process.env.OPENAI_API_KEY) throw new Error("Falta configurar OPENAI_API_KEY en .env.local.");
   const startedAt = Date.now();
   const messages = validateAgentMessages(body.messages);
@@ -87,7 +93,7 @@ export async function runSellerAgent(supabase: SupabaseClient, body: SellerAgent
     addUsage(analyzed.usage, analyzed.model);
     if (isGarmentAnalysisUnclear(garmentAnalysis)) {
       const message = "La imagen está demasiado borrosa para identificar la prenda con seguridad. ¿Podrías subir una foto más clara o decirme si es una blusa, un top, un pantalón u otra prenda?";
-      return { message, garmentAnalysis, temporaryCloset, debug: buildDebug([], [], messages, body, garmentAnalysis, temporaryCloset, modelCalls, usage, estimatedCostUsd, costFullyEstimated, startedAt) };
+      return { message, garmentAnalysis, temporaryCloset, debug: buildDebug([], [], [], messages, body, garmentAnalysis, temporaryCloset, modelCalls, usage, estimatedCostUsd, costFullyEstimated, startedAt) };
     }
   }
 
@@ -97,29 +103,36 @@ export async function runSellerAgent(supabase: SupabaseClient, body: SellerAgent
     ...messages.map((message) => ({ role: message.role, content: message.content })),
   ];
   const searches: DebugCall[] = [];
+  const commerceOperations: CommerceDebugCall[] = [];
   const candidates = new Map<string, CatalogSearchResult>();
   const maxRounds = temporaryCloset ? 4 : MAX_TOOL_ROUNDS;
 
   for (let round = 0; round < maxRounds; round += 1) {
-    const response = await openai.responses.create({ model: SELLER_AGENT_MODEL, instructions: SELLER_AGENT_INSTRUCTIONS, input, tools: [catalogToolDefinition], tool_choice: "auto", parallel_tool_calls: false, store: false, max_output_tokens: 700 });
+    const response = await openai.responses.create({ model: SELLER_AGENT_MODEL, instructions: SELLER_AGENT_INSTRUCTIONS, input, tools: commerce ? [catalogToolDefinition, ...commerceToolDefinitions] : [catalogToolDefinition], tool_choice: "auto", parallel_tool_calls: false, store: false, max_output_tokens: 700 });
     addUsage(response.usage, SELLER_AGENT_MODEL);
     const calls = response.output.filter((item) => item.type === "function_call");
     if (calls.length === 0) {
       const recommendedProducts = [...candidates.values()].filter((product) => response.output_text.toLocaleLowerCase("es-CL").includes(product.name.toLocaleLowerCase("es-CL"))).map((product) => ({ name: product.name, sku: product.sku }));
-      return { message: response.output_text || "No pude preparar una respuesta en este momento.", garmentAnalysis, temporaryCloset, debug: buildDebug(searches, recommendedProducts, messages, body, garmentAnalysis, temporaryCloset, modelCalls, usage, estimatedCostUsd, costFullyEstimated, startedAt) };
+      return { message: response.output_text || "No pude preparar una respuesta en este momento.", garmentAnalysis, temporaryCloset, debug: buildDebug(searches, commerceOperations, recommendedProducts, messages, body, garmentAnalysis, temporaryCloset, modelCalls, usage, estimatedCostUsd, costFullyEstimated, startedAt) };
     }
     input = [...input, ...calls.map((call) => ({ type: "function_call" as const, call_id: call.call_id, name: call.name, arguments: call.arguments }))];
     for (const call of calls) {
-      if (call.name !== "search_catalog") throw new Error("Herramienta no permitida.");
-      const toolResult = await executeCatalogTool(supabase, JSON.parse(call.arguments));
-      for (const product of toolResult.results) if (product.compatibleVariants.some((variant) => variant.stock > 0)) candidates.set(product.id, product);
-      searches.push({ intent: describeIntent(toolResult.filters as Record<string, unknown>), tool: "search_catalog", filters: toolResult.filters, resultCount: toolResult.resultCount });
-      input.push({ type: "function_call_output", call_id: call.call_id, output: JSON.stringify(toolResult) });
+      const parsedArguments = JSON.parse(call.arguments);
+      if (call.name === "search_catalog") {
+        const toolResult = await executeCatalogTool(supabase, parsedArguments);
+        for (const product of toolResult.results) if (product.compatibleVariants.some((variant) => variant.stock > 0)) candidates.set(product.id, product);
+        searches.push({ intent: describeIntent(toolResult.filters as Record<string, unknown>), tool: "search_catalog", filters: toolResult.filters, resultCount: toolResult.resultCount });
+        input.push({ type: "function_call_output", call_id: call.call_id, output: JSON.stringify(toolResult) });
+      } else if (commerce && isCommerceToolName(call.name)) {
+        const toolResult = await executeCommerceTool({ ...commerce, supabase }, call.name, parsedArguments);
+        commerceOperations.push({ tool: call.name, status: toolResult.status });
+        return { message: formatCommerceResponse(call.name, toolResult, parsedArguments), garmentAnalysis, temporaryCloset, debug: buildDebug(searches, commerceOperations, [], messages, body, garmentAnalysis, temporaryCloset, modelCalls, usage, estimatedCostUsd, costFullyEstimated, startedAt) };
+      } else throw new Error("Herramienta no permitida.");
     }
   }
   throw new Error("El agente excedió el límite seguro de búsquedas.");
 }
 
-function buildDebug(searches: DebugCall[], recommendedProducts: { name: string; sku: string }[], messages: AgentChatMessage[], body: SellerAgentInput, garmentAnalysis: GarmentAnalysis | null, temporaryCloset: TemporaryGarment[] | null, modelCalls: number, usage: TokenUsage, estimatedCostUsd: number, costFullyEstimated: boolean, startedAt: number): SellerAgentResult["debug"] {
-  return { experience: temporaryCloset ? "2C" : garmentAnalysis ? "2B" : "texto", imageCount: Array.isArray(body.images) ? body.images.length : body.image ? 1 : 0, imageReceived: Boolean(body.image || body.images), garmentAnalysis, temporaryCloset, intent: messages.at(-1)?.content, searches, recommendedProducts, modelCalls, toolCalls: searches.length, usage, estimatedCostUsd, costFullyEstimated, durationMs: Date.now() - startedAt };
+function buildDebug(searches: DebugCall[], commerceOperations: CommerceDebugCall[], recommendedProducts: { name: string; sku: string }[], messages: AgentChatMessage[], body: SellerAgentInput, garmentAnalysis: GarmentAnalysis | null, temporaryCloset: TemporaryGarment[] | null, modelCalls: number, usage: TokenUsage, estimatedCostUsd: number, costFullyEstimated: boolean, startedAt: number): SellerAgentResult["debug"] {
+  return { experience: temporaryCloset ? "2C" : garmentAnalysis ? "2B" : "texto", imageCount: Array.isArray(body.images) ? body.images.length : body.image ? 1 : 0, imageReceived: Boolean(body.image || body.images), garmentAnalysis, temporaryCloset, intent: messages.at(-1)?.content, searches, commerceOperations, recommendedProducts, modelCalls, toolCalls: searches.length + commerceOperations.length, usage, estimatedCostUsd, costFullyEstimated, durationMs: Date.now() - startedAt };
 }

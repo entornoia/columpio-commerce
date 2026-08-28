@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { runSellerAgent, type SellerAgentResult } from "../../agent/runner";
 import { createInstagramConversationControl, type InstagramConversationControl } from "./conversation-repository";
-import { runWithConversationHandoff } from "./handoff";
+import { getInstagramAutomationBlockReason, isInstagramAgentGloballyEnabled, runWithConversationHandoff } from "./handoff";
 import { fetchInstagramImage } from "./image";
 import { instagramDevLog } from "./logging";
 import { parseInstagramWebhookWithDiagnostics } from "./parser";
@@ -72,7 +72,14 @@ export async function processIncomingInstagramMessage(message: IncomingCommerceM
         const messages = [...conversation.messages, { role: "user" as const, content: userText }];
         const image = message.imageUrl ? await (dependencies.fetchImage ?? fetchInstagramImage)(message.imageUrl) : undefined;
         instagramDevLog("agent started", { sender: maskedId(message.externalUserId), hasText: Boolean(message.text), hasImage: Boolean(image) });
-        const result = await (dependencies.runAgent ?? runSellerAgent)(dependencies.supabase, { messages, image, garmentAnalysis: image ? undefined : conversation.garmentAnalysis });
+        const result = await (dependencies.runAgent ?? runSellerAgent)(dependencies.supabase, { messages, image, garmentAnalysis: image ? undefined : conversation.garmentAnalysis }, {
+          externalUserId: message.externalUserId,
+          eventId: message.eventId,
+          authorizeMutation: async () => {
+            const reason = await getInstagramAutomationBlockReason(control, message.externalUserId, dependencies.globalAgentEnabled ?? isInstagramAgentGloballyEnabled);
+            if (reason) throw new Error(`Operación comercial bloqueada: ${reason}`);
+          },
+        });
         instagramDevLog("agent completed", { sender: maskedId(message.externalUserId), toolCalls: result.debug.toolCalls, searches: result.debug.searches.length });
         const responseText = formatInstagramResponse(result.message);
         return { responseText, status: "processed", result, conversation: { messages: [...messages, { role: "assistant", content: responseText }], garmentAnalysis: result.garmentAnalysis, needsHuman: false } };
