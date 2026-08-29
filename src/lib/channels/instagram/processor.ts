@@ -3,19 +3,20 @@ import { runSellerAgent, type SellerAgentResult } from "../../agent/runner";
 import { createInstagramConversationControl, type InstagramConversationControl } from "./conversation-repository";
 import { getInstagramAutomationBlockReason, isInstagramAgentGloballyEnabled, runWithConversationHandoff } from "./handoff";
 import { fetchInstagramImage } from "./image";
-import { instagramDevLog } from "./logging";
+import { instagramDevLog, instagramOperationalLog } from "./logging";
 import { parseInstagramWebhookWithDiagnostics } from "./parser";
 import { refreshInstagramProfile } from "./profile";
 import { instagramConversations, instagramEvents, instagramIdempotency } from "./stores";
 import type { IncomingCommerceMessage, InstagramConversation } from "./types";
-
-const HUMAN_MESSAGE = "Voy a derivar esta conversación para que la revise una persona del equipo. No puedo confirmar por este medio cobros, devoluciones ni situaciones sensibles.";
+import { routeInstagramIntent, type AmbiguousIntentClassifier } from "./intent-router.ts";
+import { generalInfoResponse } from "./general-info.ts";
+import { EXCHANGE_CLARIFICATION_RESPONSE, GREETING_RESPONSE, safeIntentResponse } from "./intent-responses.ts";
+import { AMBIGUOUS_EXCHANGE_REASON, classifyIntentByRules, COMMERCIAL_CONTINUATION_REASON, GREETING_REASON, intentRuleFeatures } from "./intent-rules.ts";
+import { handoffAcknowledgement } from "./handoff-response";
+import { sendHandoffNotification } from "./handoff-notification";
+import { updateHandoffNotification, type HandoffReason } from "./handoff-cases";
 
 function maskedId(id: string) { return id.length > 6 ? `${id.slice(0, 3)}…${id.slice(-3)}` : "***"; }
-
-function requiresHuman(text: string | null) {
-  return Boolean(text && /\b(hablar con (?:una )?persona|humano|ejecutiv[oa]|reclamo|devol\w*|reembolso|cobr\w*|pago duplicado|fraude|demanda|legal)\b/i.test(text));
-}
 
 export function formatInstagramResponse(text: string, maxLength = 950) {
   let compact = text.replace(/\*\*/g, "").replace(/\n{3,}/g, "\n\n").trim();
@@ -34,14 +35,30 @@ export type InstagramProcessorDependencies = {
   runAgent?: typeof runSellerAgent;
   refreshProfile?: (externalUserId: string) => Promise<void>;
   globalAgentEnabled?: () => boolean;
+  classifyIntent?: AmbiguousIntentClassifier;
 };
 
 type GeneratedResponse = {
-  responseText: string;
-  status: "processed" | "escalated";
+  responseText: string | null;
+  status: "processed" | "escalated" | "ignored";
   conversation: InstagramConversation;
   result?: SellerAgentResult;
+  pauseAfterSend?: boolean;
+  intent?: import("./conversation-repository").InstagramIntent;
+  classifiedAt?: string;
+  handoffReason?: HandoffReason;
 };
+
+function withinHours(value: string | null, reference: string, hours: number) {
+  if (!value) return false;
+  const elapsed = Date.parse(reference) - Date.parse(value);
+  return Number.isFinite(elapsed) && elapsed >= 0 && elapsed <= hours * 60 * 60_000;
+}
+
+function handoffReasonFor(intent: import("./conversation-repository").InstagramIntent, secondUnknown: boolean): HandoffReason | null {
+  if (intent === "exchange_return" || intent === "after_sales" || intent === "business_proposal" || intent === "human_request") return intent;
+  return secondUnknown ? "unknown_escalation" : null;
+}
 
 export async function processIncomingInstagramMessage(message: IncomingCommerceMessage, dependencies: InstagramProcessorDependencies) {
   const startedAt = Date.now();
@@ -64,13 +81,39 @@ export async function processIncomingInstagramMessage(message: IncomingCommerceM
       generate: async (): Promise<GeneratedResponse> => {
         const conversation = instagramConversations.get(message.externalUserId);
         instagramDevLog("context recovered", { sender: maskedId(message.externalUserId), messageCount: conversation.messages.length, needsHuman: conversation.needsHuman });
-        if (conversation.needsHuman || requiresHuman(message.text)) {
-          return { responseText: HUMAN_MESSAGE, status: "escalated", conversation: { ...conversation, needsHuman: true } };
+        const automationState = await control.getAutomationState(message.channel, message.externalUserId);
+        const previousIntent = await control.getIntentState(message.channel, message.externalUserId);
+        instagramOperationalLog("intent pre-state", { agentEnabled: automationState.agentEnabled, humanOnly: automationState.humanOnly, lastIntent: previousIntent.lastIntent });
+        const features = intentRuleFeatures(message.text);
+        const deterministicRule = classifyIntentByRules(message, previousIntent);
+        instagramOperationalLog("normalizedTextFeatures", features);
+        instagramOperationalLog("intent rule evaluated", { rule: "exchange_return", matched: deterministicRule?.intent === "exchange_return" });
+        const classification = await routeInstagramIntent(message, previousIntent, dependencies.classifyIntent);
+        const ambiguousExchange = classification.intent === "unknown" && classification.reason === AMBIGUOUS_EXCHANGE_REASON;
+        const isolatedContinuation = classification.intent === "unknown" && classification.reason === COMMERCIAL_CONTINUATION_REASON;
+        const secondUnknown = classification.intent === "unknown" && !ambiguousExchange && !isolatedContinuation && previousIntent.lastIntent === "unknown" && withinHours(previousIntent.lastIntentAt, message.receivedAt, 24);
+        const handoffReason = handoffReasonFor(classification.intent, secondUnknown);
+        const pauseAfterSend = handoffReason !== null;
+        if (!pauseAfterSend) await control.recordIntent(message.channel, message.externalUserId, classification.intent, message.receivedAt);
+        instagramDevLog("intent classified", { sender: maskedId(message.externalUserId), intent: classification.intent, confidence: classification.confidence, source: classification.source, reason: classification.reason });
+        instagramOperationalLog("intent classified", { intent: classification.intent, source: classification.source, confidence: classification.confidence });
+
+        if (classification.intent === "social_reaction") return { responseText: null, status: "ignored", conversation, intent: classification.intent, classifiedAt: message.receivedAt };
+        if (classification.intent === "general_info") return { responseText: classification.reason === GREETING_REASON ? GREETING_RESPONSE : generalInfoResponse(message.text), status: "processed", conversation, intent: classification.intent, classifiedAt: message.receivedAt };
+        if (classification.intent !== "sales") {
+          if (classification.intent === "exchange_return") instagramOperationalLog("temporary_human requested", { requested: true, sellerAgentInvoked: false });
+          const responseText = ambiguousExchange
+            ? EXCHANGE_CLARIFICATION_RESPONSE
+            : handoffReason
+              ? handoffAcknowledgement(handoffReason)
+              : safeIntentResponse(classification.intent, false);
+          return { responseText, status: pauseAfterSend ? "escalated" : "processed", pauseAfterSend, conversation, intent: classification.intent, classifiedAt: message.receivedAt, handoffReason: handoffReason ?? undefined };
         }
 
         const userText = message.text ?? "Recomiéndame algo que combine con la prenda de la imagen.";
         const messages = [...conversation.messages, { role: "user" as const, content: userText }];
         const image = message.imageUrl ? await (dependencies.fetchImage ?? fetchInstagramImage)(message.imageUrl) : undefined;
+        instagramOperationalLog("seller agent invocation", { invoked: true, intent: classification.intent });
         instagramDevLog("agent started", { sender: maskedId(message.externalUserId), hasText: Boolean(message.text), hasImage: Boolean(image) });
         const result = await (dependencies.runAgent ?? runSellerAgent)(dependencies.supabase, { messages, image, garmentAnalysis: image ? undefined : conversation.garmentAnalysis }, {
           externalUserId: message.externalUserId,
@@ -84,10 +127,33 @@ export async function processIncomingInstagramMessage(message: IncomingCommerceM
         const responseText = formatInstagramResponse(result.message);
         return { responseText, status: "processed", result, conversation: { messages: [...messages, { role: "assistant", content: responseText }], garmentAnalysis: result.garmentAnalysis, needsHuman: false } };
       },
-      send: async (generated) => dependencies.sendText(message.externalUserId, generated.responseText),
+      pauseBeforeSend: (generated) => generated.pauseAfterSend === true,
+      persistPause: async (generated) => {
+        if (!generated.handoffReason || !generated.classifiedAt) throw new Error("Faltan metadatos para persistir el handoff");
+        const transition = await control.transitionToTemporaryHuman(message.channel, message.externalUserId, message.eventId, generated.handoffReason, generated.classifiedAt);
+        if (transition.transitioned && transition.caseId) {
+          try {
+            const { data } = await dependencies.supabase.from("instagram_conversations").select("instagram_username")
+              .eq("channel", "instagram").eq("external_user_id", message.externalUserId).single();
+            const notification = await sendHandoffNotification({
+              caseId: transition.caseId,
+              reason: generated.handoffReason,
+              instagramUsername: typeof data?.instagram_username === "string" ? data.instagram_username : null,
+              maskedInstagramId: maskedId(message.externalUserId),
+              createdAt: generated.classifiedAt,
+            });
+            await updateHandoffNotification(dependencies.supabase, transition.caseId, notification);
+          } catch {
+            instagramOperationalLog("handoff notification", { status: "failed", handoffPreserved: true }, "error");
+          }
+        }
+        return transition.transitioned;
+      },
+      send: async (generated) => { if (generated.responseText) await dependencies.sendText(message.externalUserId, generated.responseText); },
     });
 
     if (outcome.status === "paused") {
+      instagramOperationalLog("paused event ignored", { reason: outcome.reason, automaticResponse: false });
       instagramDevLog("event ignored", { reason: outcome.reason, sender: maskedId(message.externalUserId) });
       const status = outcome.reason === "global_disabled" ? "global_disabled" as const : outcome.reason === "human_only" ? "human_only" as const : "paused" as const;
       instagramEvents.add({ eventId: message.eventId, externalUserId: message.externalUserId, status, receivedAt: message.receivedAt, durationMs: Date.now() - startedAt });
@@ -102,7 +168,7 @@ export async function processIncomingInstagramMessage(message: IncomingCommerceM
     const generated = outcome.value;
     instagramConversations.set(message.externalUserId, generated.conversation);
     instagramEvents.add({ eventId: message.eventId, externalUserId: message.externalUserId, status: generated.status, receivedAt: message.receivedAt, durationMs: Date.now() - startedAt, toolCalls: generated.result?.debug.toolCalls, resultCount: generated.result?.debug.searches.reduce((total, item) => total + item.resultCount, 0) });
-    return { status: generated.status, message: generated.responseText, ...(generated.result ? { debug: generated.result.debug } : {}) };
+    return { status: generated.status, ...(generated.responseText ? { message: generated.responseText } : {}), ...(generated.result ? { debug: generated.result.debug } : {}) };
   } catch (error) {
     instagramIdempotency.release(message.eventId);
     const safeError = error instanceof Error ? error.message : "Error interno";

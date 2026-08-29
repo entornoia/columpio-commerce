@@ -13,6 +13,9 @@ META_INSTAGRAM_ACCESS_TOKEN=
 META_INSTAGRAM_ACCOUNT_ID=
 META_APP_SECRET=
 META_GRAPH_API_VERSION=v25.0
+HUMAN_HANDOFF_NOTIFICATION_EMAIL=
+HUMAN_HANDOFF_EMAIL_FROM=
+HUMAN_HANDOFF_SLA_HOURS=24
 ```
 
 - `SUPABASE_SERVICE_ROLE_KEY`: Settings → API Keys en Supabase. Es necesaria porque el webhook no tiene la cookie del administrador y debe leer el catálogo desde backend. Nunca usarla en código cliente.
@@ -21,6 +24,9 @@ META_GRAPH_API_VERSION=v25.0
 - `META_INSTAGRAM_ACCESS_TOKEN`: token de la cuenta profesional con los permisos indicados abajo.
 - `META_INSTAGRAM_ACCOUNT_ID`: ID numérico de la cuenta profesional (`IG_ID`), no el username ni el IGSID de una clienta.
 - `META_GRAPH_API_VERSION`: versión vigente elegida en Meta. El ejemplo se preparó para `v25.0`; confirmarla antes de conectar producción.
+
+- `HUMAN_HANDOFF_SLA_HOURS`: entero entre 1 y 168 usado solo en el acuse determinista. Si falta o es inválido, el acuse no promete un plazo específico.
+- `HUMAN_HANDOFF_NOTIFICATION_EMAIL` y `HUMAN_HANDOFF_EMAIL_FROM`: preparan la notificación interna. Mientras no exista un proveedor conectado, el caso queda `not_configured` sin afectar la pausa ni el acuse. `RESEND_API_KEY` no es requisito de este bloque.
 
 Reiniciar `pnpm dev` después de cambiar `.env.local`.
 
@@ -74,6 +80,12 @@ Cuando una conversación está pausada, el webhook sigue registrando su última 
 La migración `006_instagram_cart_and_orders.sql` crea carritos, items, pedidos, snapshots e idempotencia persistente. Debe ejecutarse antes de habilitar esta versión del agente en producción. Las tablas tienen RLS habilitado y solo el backend `service_role` puede usar sus RPC.
 
 El agente puede agregar, consultar, quitar y cambiar cantidades únicamente con IDs reales de variantes obtenidos desde Supabase. Al confirmar, el pedido recibe una referencia backend `COL-…` y queda `pending_payment`; no se reserva ni descuenta stock y no se procesa pago. Si cambia un precio, la primera confirmación actualiza el carrito y exige una nueva confirmación en otro mensaje.
+
+La migración `009_instagram_intent_router.sql` persiste solo `last_intent` y `last_intent_at`, nunca el texto del DM. El router aplica primero reglas deterministas y usa un clasificador estructurado sin tools únicamente ante ambigüedad. Las solicitudes humanas y los casos sensibles pausan la automatización antes del acuse; una reacción social pura queda sin respuesta.
+
+La migración `010_instagram_handoff_cases.sql` agrega un caso operativo por derivación, sin guardar mensajes. La RPC pausa la conversación y crea el caso en una sola transacción; `trigger_event_id` y el índice parcial garantizan un solo caso por evento y como máximo un caso abierto por conversación. Los estados son `pending`, `in_progress` y `resolved`. Tomar o resolver un caso nunca reactiva el agente; **Volver al agente** es una acción separada, disponible después de resolver y solo si `human_only=false`.
+
+La notificación interna registra `pending`, `sent`, `failed` o `not_configured`. En esta versión no hay proveedor de correo conectado: la ausencia de configuración o un fallo de notificación no revierte el handoff. Mientras una conversación está pausada, los eventos posteriores solo actualizan `last_inbound_at`: no se clasifican, no ejecutan LLM/tools y no generan otro acuse.
 
 ## Prueba local
 

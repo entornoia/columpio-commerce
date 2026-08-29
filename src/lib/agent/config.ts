@@ -1,5 +1,6 @@
 /** Modelo único del agente MVP. Cambiarlo aquí actualiza toda la integración. */
 export const SELLER_AGENT_MODEL = "gpt-5.4-mini";
+export const INTENT_ROUTER_MODEL = "gpt-5.4-mini";
 export const DEFAULT_GARMENT_VISION_MODEL = "gpt-5.4-mini";
 export const SUPPORTED_GARMENT_VISION_MODELS = ["gpt-5.4-mini", "gpt-5.4-nano"] as const;
 export const MAX_CONVERSATION_MESSAGES = 12;
