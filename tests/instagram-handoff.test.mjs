@@ -76,11 +76,11 @@ test("una nueva instancia conserva el estado human_only persistido", async () =>
 });
 
 test("Volver al agente restaura explícitamente ambos flags", () => {
-  assert.deepEqual(automationModeValues("agent", "2026-08-26T13:00:00.000Z"), { agent_enabled: true, human_only: false, human_takeover_at: null, updated_at: "2026-08-26T13:00:00.000Z" });
+  assert.deepEqual(automationModeValues("agent", "2026-08-26T13:00:00.000Z"), { agent_enabled: true, human_only: false, human_takeover_at: null, conversation_state: "unscoped", conversation_state_at: "2026-08-26T13:00:00.000Z", last_product_id: null, last_variant_id: null, last_agent_question: null, last_commercial_action: null, commercial_context_at: null, focus_product_id: null, focus_variant_id: null, focus_category: null, focus_updated_at: null, updated_at: "2026-08-26T13:00:00.000Z" });
 });
 
 test("Siempre humano desactiva también agent_enabled", () => {
-  assert.deepEqual(automationModeValues("human_only", "2026-08-26T13:00:00.000Z"), { agent_enabled: false, human_only: true, human_takeover_at: "2026-08-26T13:00:00.000Z", updated_at: "2026-08-26T13:00:00.000Z" });
+  assert.deepEqual(automationModeValues("human_only", "2026-08-26T13:00:00.000Z"), { agent_enabled: false, human_only: true, human_takeover_at: "2026-08-26T13:00:00.000Z", conversation_state: "human", conversation_state_at: "2026-08-26T13:00:00.000Z", updated_at: "2026-08-26T13:00:00.000Z" });
 });
 
 test("human_only tiene prioridad incluso si agent_enabled es true", async () => {

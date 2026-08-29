@@ -4,10 +4,28 @@ Esta integración usa **Instagram API with Instagram Login**. No necesita una Fa
 
 ## Variables server-side
 
+Instagram funciona definitivamente como asesora de catálogo y deriva toda compra a la web:
+
+```env
+INSTAGRAM_COMMERCE_MODE=advisor
+STORE_WEB_URL=https://columpiostore.cl
+```
+
+Solo el valor exacto `advisor` habilita la asesoría. Cualquier otro valor falla cerrado para consultas comerciales. El canal puede buscar y recomendar productos reales, responder atributos y entregar el CTA web, pero no recibe commerce tools, no crea carritos, pedidos o links de pago y no solicita email. Ambas variables son exclusivamente server-side y no deben usar el prefijo `NEXT_PUBLIC_`.
+
 Copiar solo en `.env.local` o en los secretos del hosting:
 
 ```dotenv
 SUPABASE_SERVICE_ROLE_KEY=
+INSTAGRAM_COMMERCE_MODE=advisor
+STORE_WEB_URL=https://columpiostore.cl
+MERCADOPAGO_ACCESS_TOKEN=
+MERCADOPAGO_ENVIRONMENT=test
+FLOW_API_KEY=
+FLOW_SECRET_KEY=
+FLOW_API_BASE_URL=https://sandbox.flow.cl/api
+FLOW_ENVIRONMENT=sandbox
+APP_BASE_URL=https://columpio-commerce.vercel.app
 META_WEBHOOK_VERIFY_TOKEN=
 META_INSTAGRAM_ACCESS_TOKEN=
 META_INSTAGRAM_ACCOUNT_ID=
@@ -19,6 +37,12 @@ HUMAN_HANDOFF_SLA_HOURS=24
 ```
 
 - `SUPABASE_SERVICE_ROLE_KEY`: Settings → API Keys en Supabase. Es necesaria porque el webhook no tiene la cookie del administrador y debe leer el catálogo desde backend. Nunca usarla en código cliente.
+- `MERCADOPAGO_ACCESS_TOKEN`: credencial privada de Checkout Pro obtenida en Mercado Pago Developers. Debe existir solo en el servidor.
+- `MERCADOPAGO_ENVIRONMENT`: guard operacional; acepta únicamente `test` o `production`. Ambos modos usan `https://api.mercadopago.com`.
+- `FLOW_API_KEY` y `FLOW_SECRET_KEY`: credenciales privadas de Flow. Nunca exponerlas al navegador ni registrarlas.
+- `FLOW_ENVIRONMENT`: acepta únicamente `sandbox` o `production`.
+- `FLOW_API_BASE_URL`: debe ser exactamente `https://sandbox.flow.cl/api` para sandbox o `https://www.flow.cl/api` para producción.
+- `APP_BASE_URL`: origen HTTPS público usado para construir `urlConfirmation` y `urlReturn`. En desarrollo puede ser el origen HTTPS vigente de ngrok; en Vercel, el dominio desplegado.
 - `META_WEBHOOK_VERIFY_TOKEN`: texto aleatorio largo creado por nosotros; debe coincidir en Meta y el servidor.
 - `META_APP_SECRET`: **Instagram → API setup with Instagram login**, bloque que muestra `Instagram App ID` y `Instagram App Secret`; pulsar **Show** junto a `Instagram App Secret`. Para este flujo no usar el secreto principal de **App settings → Basic**. El servidor lo usa para HMAC y no es el verify token.
 - `META_INSTAGRAM_ACCESS_TOKEN`: token de la cuenta profesional con los permisos indicados abajo.
@@ -80,6 +104,12 @@ Cuando una conversación está pausada, el webhook sigue registrando su última 
 La migración `006_instagram_cart_and_orders.sql` crea carritos, items, pedidos, snapshots e idempotencia persistente. Debe ejecutarse antes de habilitar esta versión del agente en producción. Las tablas tienen RLS habilitado y solo el backend `service_role` puede usar sus RPC.
 
 El agente puede agregar, consultar, quitar y cambiar cantidades únicamente con IDs reales de variantes obtenidos desde Supabase. Al confirmar, el pedido recibe una referencia backend `COL-…` y queda `pending_payment`; no se reserva ni descuenta stock y no se procesa pago. Si cambia un precio, la primera confirmación actualiza el carrito y exige una nueva confirmación en otro mensaje.
+
+La migración `008_mercadopago_checkout_pro.sql` y el gateway Mercado Pago se conservan como legado deprecado, pero ya no son ejecutados por `create_payment_link`.
+
+La migración `011_flow_checkout.sql` agrega un checkout Flow único por pedido con claim transaccional, email del pagador, `flowOrder`, token y URL literal. Flow exige email: si la clienta no lo ha entregado, la tool solicita exclusivamente ese dato y no llama al proveedor. La API usa `application/x-www-form-urlencoded` y firma todos los parámetros con HMAC-SHA256. Un resultado incierto queda bloqueado para impedir órdenes duplicadas.
+
+`/api/payments/flow/confirmation` y `/api/payments/flow/return` son callbacks públicos exactos para Flow. En BLOQUE 4C no actualizan el pedido ni lo marcan pagado. El retorno redirige con HTTP 303 a la página pública e informativa `/payment-result`; la confirmación real pertenece a BLOQUE 4D.
 
 La migración `009_instagram_intent_router.sql` persiste solo `last_intent` y `last_intent_at`, nunca el texto del DM. El router aplica primero reglas deterministas y usa un clasificador estructurado sin tools únicamente ante ambigüedad. Las solicitudes humanas y los casos sensibles pausan la automatización antes del acuse; una reacción social pura queda sin respuesta.
 

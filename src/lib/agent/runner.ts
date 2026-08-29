@@ -12,8 +12,8 @@ import type { InstagramCommerceContext } from "../commerce/types";
 import { formatCommerceResponse } from "../commerce/response-formatter";
 
 export type AgentChatMessage = { role: "user" | "assistant"; content: string };
-type DebugCall = { intent: string; tool: "search_catalog"; filters: unknown; resultCount: number };
-type CommerceDebugCall = { tool: "add_to_cart" | "view_cart" | "remove_from_cart" | "set_cart_quantity" | "create_order"; status: string };
+type DebugCall = { intent: string; tool: "search_catalog"; filters: unknown; resultCount: number; productIds: string[]; variantIds: string[] };
+type CommerceDebugCall = { tool: "add_to_cart" | "view_cart" | "remove_from_cart" | "set_cart_quantity" | "create_order" | "create_payment_link"; status: string; variantId: string | null };
 
 export type SellerAgentInput = {
   messages: unknown;
@@ -21,6 +21,7 @@ export type SellerAgentInput = {
   images?: unknown;
   garmentAnalysis?: unknown;
   temporaryCloset?: unknown;
+  commercialContext?: unknown;
 };
 
 export type SellerAgentResult = {
@@ -98,6 +99,7 @@ export async function runSellerAgent(supabase: SupabaseClient, body: SellerAgent
   }
 
   let input: OpenAI.Responses.ResponseInput = [
+    ...(body.commercialContext ? [{ role: "developer" as const, content: `CONTEXTO COMERCIAL ESTRUCTURADO (solo lectura; los IDs fueron validados por backend):\n${JSON.stringify(body.commercialContext)}\nNo puedes modificar este estado ni fabricar IDs. Si el contexto no basta, pregunta.` }] : []),
     ...(temporaryCloset ? [{ role: "developer" as const, content: `MINI-CLOSET TEMPORAL (interpretaciones visuales, no inventario):\n${JSON.stringify(temporaryCloset)}\nPrioriza una sola compra de alto impacto que combine con la mayor cantidad de estas prendas. Puedes dar hasta dos alternativas. Cada producto debe provenir de search_catalog con active=true e inStock=true. Indica de forma prudente con cuántas prendas combina y por qué. Si alguna prenda tiene incertidumbre, reconócelo y continúa con las identificables.` }] : []),
     ...(garmentAnalysis ? [{ role: "developer" as const, content: `CONTEXTO VISUAL DE PRENDA (interpretación, no inventario):\n${JSON.stringify(garmentAnalysis)}` }] : []),
     ...messages.map((message) => ({ role: message.role, content: message.content })),
@@ -121,11 +123,15 @@ export async function runSellerAgent(supabase: SupabaseClient, body: SellerAgent
       if (call.name === "search_catalog") {
         const toolResult = await executeCatalogTool(supabase, parsedArguments);
         for (const product of toolResult.results) if (product.compatibleVariants.some((variant) => variant.stock > 0)) candidates.set(product.id, product);
-        searches.push({ intent: describeIntent(toolResult.filters as Record<string, unknown>), tool: "search_catalog", filters: toolResult.filters, resultCount: toolResult.resultCount });
+        searches.push({
+          intent: describeIntent(toolResult.filters as Record<string, unknown>), tool: "search_catalog", filters: toolResult.filters,
+          resultCount: toolResult.resultCount, productIds: toolResult.results.map((product) => product.id),
+          variantIds: toolResult.results.flatMap((product) => product.compatibleVariants.map((variant) => variant.id)),
+        });
         input.push({ type: "function_call_output", call_id: call.call_id, output: JSON.stringify(toolResult) });
       } else if (commerce && isCommerceToolName(call.name)) {
         const toolResult = await executeCommerceTool({ ...commerce, supabase }, call.name, parsedArguments);
-        commerceOperations.push({ tool: call.name, status: toolResult.status });
+        commerceOperations.push({ tool: call.name, status: toolResult.status, variantId: typeof parsedArguments.variantId === "string" ? parsedArguments.variantId : null });
         return { message: formatCommerceResponse(call.name, toolResult, parsedArguments), garmentAnalysis, temporaryCloset, debug: buildDebug(searches, commerceOperations, [], messages, body, garmentAnalysis, temporaryCloset, modelCalls, usage, estimatedCostUsd, costFullyEstimated, startedAt) };
       } else throw new Error("Herramienta no permitida.");
     }

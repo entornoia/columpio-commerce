@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test:instagram": "node --conditions=react-server --experimental-strip-types --test tests/instagram-channel.test.mjs tests/instagram-handoff.test.mjs tests/instagram-profile.test.mjs tests/instagram-commerce.test.mjs tests/instagram-commerce-voice.test.mjs tests/instagram-intent-router.test.mjs tests/instagram-handoff-cases.test.mjs tests/admin-auth.test.mjs"
+    "test:instagram": "node --conditions=react-server --experimental-strip-types --test tests/instagram-channel.test.mjs tests/instagram-handoff.test.mjs tests/instagram-profile.test.mjs tests/instagram-commerce.test.mjs tests/instagram-commerce-voice.test.mjs tests/instagram-flow-payment-link.test.mjs tests/instagram-intent-router.test.mjs tests/instagram-handoff-cases.test.mjs tests/instagram-conversation-state.test.mjs tests/instagram-semantic-commerce.test.mjs tests/instagram-advisor-mode.test.mjs tests/admin-auth.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

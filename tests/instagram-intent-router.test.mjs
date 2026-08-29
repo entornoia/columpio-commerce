@@ -47,6 +47,24 @@ test("la continuación comercial real permanece en sales", () => {
   const recent = { lastIntent: "sales", lastIntentAt: "2026-08-28T11:55:00.000Z" };
   assert.equal(classifyIntentByRules(message("En negro tienes?"), recent, current)?.intent, "sales");
   for (const text of ["Sí por favor", "Dale", "Muéstrame"]) assert.equal(classifyIntentByRules(message(text), recent, current)?.intent, "sales", text);
+  assert.equal(classifyIntentByRules(message("clienta@example.com"), recent, current)?.intent, "sales");
+});
+
+test("búsquedas explícitas de producto son sales determinístico", () => {
+  const cases = [
+    "Estoy buscando un pantalón negro",
+    "Busco una blusa marfil",
+    "Necesito un blazer talla M",
+    "Tienes pantalones negros?",
+    "Busco algo para una fiesta",
+  ];
+  for (const text of cases) {
+    const classification = classifyIntentByRules(message(text), emptyIntent);
+    assert.equal(classification?.intent, "sales", text);
+    assert.equal(classification?.source, "rule", text);
+  }
+  assert.equal(classifyIntentByRules(message("Estoy buscando cómo devolver un pantalón que compré"), emptyIntent)?.intent, "exchange_return");
+  assert.equal(classifyIntentByRules(message("Estoy buscando una persona que me atienda"), emptyIntent)?.intent, "human_request");
 });
 
 test("una señal sensible explícita nunca hereda sales", () => {
@@ -172,6 +190,21 @@ test("sales conserva el flujo del agente comercial", async () => {
   const f = controlFixture(); let sends = 0;
   const result = await simulateFlow(message("¿Tienen el blazer en M?"), f, { send: async () => { sends += 1; } });
   assert.equal(result.outcome.status, "sent"); assert.equal(result.agentCalls, 1); assert.equal(sends, 1); assert.equal(f.state.lastIntent, "sales");
+});
+
+test("un unknown histórico no escala una búsqueda comercial explícita", async () => {
+  const f = controlFixture({ lastIntent: "unknown", lastIntentAt: "2026-08-28T11:55:00.000Z" });
+  let sends = 0; let sellerCalls = 0;
+  const result = await simulateFlow(message("Estoy buscando un pantalón negro"), f, {
+    classifier: async () => { throw new Error("no debe consultar LLM"); },
+    agent: async () => { sellerCalls += 1; return "Resultado de search_catalog"; },
+    send: async () => { sends += 1; },
+  });
+  assert.equal(result.outcome.status, "sent");
+  assert.equal(result.outcome.value.intent, "sales");
+  assert.equal(result.agentCalls, 1); assert.equal(sellerCalls, 1); assert.equal(sends, 1);
+  assert.equal(f.state.agentEnabled, true); assert.equal(f.state.humanOnly, false);
+  assert.equal(f.state.humanTakeoverAt, null); assert.equal(f.state.cases.length, 0);
 });
 
 test("emoji puro no responde ni ejecuta agente", async () => {

@@ -10,7 +10,7 @@ import { CatalogProvider } from "./catalog-provider";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const publicPages = ["/login", "/privacy", "/terms", "/data-deletion"];
+  const publicPages = ["/login", "/privacy", "/terms", "/data-deletion", "/payment-result"];
   if (publicPages.includes(pathname)) return children;
   async function logout() {
     await createClient().auth.signOut();

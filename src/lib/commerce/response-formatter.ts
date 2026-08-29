@@ -72,6 +72,16 @@ const itemLabel = (item: CommerceItem) => `${item.productName} ${item.color.toLo
 export function formatCommerceResponse(tool: CommerceToolName, result: CommerceToolResult, input: unknown) {
   if (result.status === "business_error") return text(result.customerMessage, "customerMessage");
 
+  if (tool === "create_payment_link") {
+    if (result.status !== "payment_link_ready") return technical("estado inesperado de link de pago");
+    const orderNumber = text(result.orderNumber, "orderNumber");
+    const paymentUrl = text(result.paymentUrl, "paymentUrl");
+    let parsed: URL;
+    try { parsed = new URL(paymentUrl); } catch { return technical("paymentUrl inválida"); }
+    if (parsed.protocol !== "https:") return technical("paymentUrl no es HTTPS");
+    return `Perfecto 💛 tu pedido ${orderNumber} está listo. Puedes pagarlo aquí: ${paymentUrl}`;
+  }
+
   if (result.status === "order_created") {
     const { parsedItems, total } = validateOrder(result);
     const orderNumber = text(result.orderNumber, "orderNumber");
@@ -83,30 +93,30 @@ export function formatCommerceResponse(tool: CommerceToolName, result: CommerceT
   if (result.status === "price_changed") {
     const { subtotal } = validateCart(result);
     if (subtotal === undefined || result.requiresConfirmation !== true) return technical("price_changed incompleto");
-    return `El precio cambió y actualicé tu carrito. El nuevo total es ${money(subtotal)}; confírmame nuevamente si dejamos el pedido armado.`;
+    return `El precio cambió y actualicé tu selección. El nuevo total es ${money(subtotal)}; confírmame nuevamente si dejamos el pedido armado.`;
   }
 
   const { parsedItems, subtotal } = validateCart(result);
   if (tool === "view_cart") {
-    if (parsedItems.length === 0) return "Tu carrito está vacío.";
+    if (parsedItems.length === 0) return "Todavía no tienes piezas seleccionadas.";
     if (subtotal === undefined) return technical("view_cart no devolvió subtotal");
     const lines = parsedItems.map((item) => `${item.productName} · ${item.color} · ${item.size} · ${item.quantity} × ${money(item.unitPrice)} · ${money(item.subtotal)}`);
-    return `En tu carrito tienes:\n${lines.join("\n")}\n\nTotal: ${money(subtotal)}.`;
+    return `Llevas estas piezas:\n${lines.join("\n")}\n\nTotal: ${money(subtotal)}.`;
   }
 
   if (tool === "remove_from_cart") {
-    if (parsedItems.length === 0) return "Ya lo saqué del carrito; quedó vacío.";
+    if (parsedItems.length === 0) return "Ya saqué esa pieza; tu selección quedó vacía.";
     if (subtotal === undefined) return technical("remove_from_cart no devolvió subtotal");
-    return `Ya lo saqué del carrito. El total queda en ${money(subtotal)}.`;
+    return `Ya saqué esa pieza de tu selección. El total queda en ${money(subtotal)}.`;
   }
 
   if (!input || typeof input !== "object" || Array.isArray(input) || typeof (input as { variantId?: unknown }).variantId !== "string") return technical(`${tool} no tiene variantId`);
   const selected = parsedItems.find((item) => item.variantId === (input as { variantId: string }).variantId);
   if (!selected) return technical(`${tool} no devolvió la variante seleccionada`);
-  if (tool === "add_to_cart") return `Perfecto, dejé ${itemLabel(selected)} en tu carrito por ${money(selected.unitPrice)}. Llevas ${selected.quantity} ${selected.quantity === 1 ? "unidad" : "unidades"}.`;
+  if (tool === "add_to_cart") return `Perfecto, te dejé ${itemLabel(selected)} en tu pedido por ${money(selected.unitPrice)}. Llevas ${selected.quantity} ${selected.quantity === 1 ? "unidad" : "unidades"}.`;
   if (tool === "set_cart_quantity") {
     if (subtotal === undefined) return technical("set_cart_quantity no devolvió subtotal");
-    return `Perfecto, dejé ${selected.quantity} ${selected.quantity === 1 ? "unidad" : "unidades"} de ${itemLabel(selected)}. Tu carrito queda en ${money(subtotal)}.`;
+    return `Perfecto, dejé ${selected.quantity} ${selected.quantity === 1 ? "unidad" : "unidades"} de ${itemLabel(selected)}. Tu selección queda en ${money(subtotal)}.`;
   }
   return technical(`tool no soportada: ${tool}`);
 }

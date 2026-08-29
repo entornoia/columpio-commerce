@@ -4,7 +4,7 @@ import type { InstagramIntent, InstagramIntentState } from "./conversation-repos
 import { classifyIntentByRules, type IntentClassification } from "./intent-rules.ts";
 import type { IncomingCommerceMessage } from "./types";
 
-const intents: InstagramIntent[] = ["sales", "after_sales", "exchange_return", "general_info", "business_proposal", "social_reaction", "human_request", "unknown"];
+const intents: InstagramIntent[] = ["sales", "after_sales", "exchange_return", "order_tracking", "general_info", "business_proposal", "social_reaction", "human_request", "unknown"];
 const fallback = (reason: string): IntentClassification => ({ intent: "unknown", confidence: 0, reason, source: "fallback" });
 
 export type AmbiguousIntentClassifier = (message: IncomingCommerceMessage, state: InstagramIntentState) => Promise<unknown>;

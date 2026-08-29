@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type HandoffReason = "exchange_return" | "after_sales" | "business_proposal" | "human_request" | "unknown_escalation";
+export type HandoffReason = "exchange_return" | "after_sales" | "order_tracking" | "business_proposal" | "human_request" | "unknown_escalation";
 export type HandoffCaseStatus = "pending" | "in_progress" | "resolved";
 export type NotificationStatus = "pending" | "sent" | "failed" | "not_configured";
 

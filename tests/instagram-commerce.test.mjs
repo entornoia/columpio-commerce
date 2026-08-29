@@ -174,7 +174,7 @@ test("stock agotado respecto del carrito produce una respuesta factual controlad
   const result = await executeCommerceTool(context(fixture, "add-2"), "add_to_cart", { variantId, quantity: 1 });
   assert.equal(result.status, "business_error");
   assert.equal(result.currentStock, 1); assert.equal(result.cartQuantity, 1);
-  assert.equal(result.customerMessage, "No puedo agregar otra unidad de Blazer Emilia Negro talla M porque queda 1 unidad disponible y ya la tienes en el carrito.");
+  assert.equal(result.customerMessage, "No puedo agregar otra unidad de Blazer Emilia Negro talla M porque queda 1 unidad disponible y ya la tienes en tu selección.");
 });
 
 test("mapea todos los errores comerciales esperables sin propagarlos", async () => {

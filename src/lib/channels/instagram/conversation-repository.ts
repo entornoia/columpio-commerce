@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { instagramOperationalLog } from "./logging.ts";
 import type { HandoffReason, InstagramHandoffCase } from "./handoff-cases";
+import type { ConversationContextPatch, InstagramAgentQuestion, InstagramCommercialAction, InstagramConversationContext, InstagramConversationState } from "./conversation-state.ts";
 
 export type InstagramConversationControlRecord = {
   id: string;
@@ -14,6 +15,7 @@ export type InstagramConversationControlRecord = {
   lastInboundAt: string | null;
   updatedAt: string;
   handoffCase: InstagramHandoffCase | null;
+  conversationState: InstagramConversationState;
 };
 
 export type IncomingConversationMetadata = {
@@ -27,13 +29,15 @@ export type InstagramConversationControl = {
   registerIncoming: (message: IncomingConversationMetadata) => Promise<void>;
   getAutomationState: (channel: "instagram", externalUserId: string) => Promise<InstagramAutomationState>;
   getIntentState: (channel: "instagram", externalUserId: string) => Promise<InstagramIntentState>;
+  getConversationContext: (channel: "instagram", externalUserId: string) => Promise<InstagramConversationContext>;
+  updateConversationContext: (channel: "instagram", externalUserId: string, patch: ConversationContextPatch) => Promise<InstagramConversationContext>;
   recordIntent: (channel: "instagram", externalUserId: string, intent: InstagramIntent, classifiedAt: string) => Promise<void>;
   pauseTemporarily: (channel: "instagram", externalUserId: string, changedAt?: string) => Promise<void>;
   transitionToTemporaryHuman: (channel: "instagram", externalUserId: string, eventId: string, reason: HandoffReason, classifiedAt: string, changedAt?: string) => Promise<{ transitioned: boolean; caseId: string | null }>;
 };
 
 export type InstagramAutomationState = { agentEnabled: boolean; humanOnly: boolean };
-export type InstagramIntent = "sales" | "after_sales" | "exchange_return" | "general_info" | "business_proposal" | "social_reaction" | "human_request" | "unknown";
+export type InstagramIntent = "sales" | "after_sales" | "exchange_return" | "order_tracking" | "general_info" | "business_proposal" | "social_reaction" | "human_request" | "unknown";
 export type InstagramIntentState = { lastIntent: InstagramIntent | null; lastIntentAt: string | null };
 export type InstagramAutomationMode = "agent" | "temporary_human" | "human_only";
 
@@ -43,6 +47,9 @@ export function automationModeValues(mode: InstagramAutomationMode, changedAt = 
     agent_enabled: agentEnabled,
     human_only: mode === "human_only",
     human_takeover_at: agentEnabled ? null : changedAt,
+    conversation_state: agentEnabled ? "unscoped" : "human",
+    conversation_state_at: changedAt,
+    ...(agentEnabled ? { last_product_id: null, last_variant_id: null, last_agent_question: null, last_commercial_action: null, commercial_context_at: null, focus_product_id: null, focus_variant_id: null, focus_category: null, focus_updated_at: null } : {}),
     updated_at: changedAt,
   };
 }
@@ -58,6 +65,7 @@ type ConversationRow = {
   human_takeover_at: string | null;
   last_inbound_at: string | null;
   updated_at: string;
+  conversation_state: InstagramConversationState;
   instagram_handoff_cases?: Array<{
     id: string;
     reason: HandoffReason;
@@ -69,7 +77,7 @@ type ConversationRow = {
   }>;
 };
 
-const columns = "id, channel, external_user_id, agent_enabled, human_only, instagram_username, profile_checked_at, human_takeover_at, last_inbound_at, updated_at";
+const columns = "id, channel, external_user_id, agent_enabled, human_only, instagram_username, profile_checked_at, human_takeover_at, last_inbound_at, updated_at, conversation_state";
 const listColumns = `${columns}, instagram_handoff_cases(id, reason, status, created_at, acknowledged_at, resolved_at, notification_status)`;
 
 function mapConversation(row: ConversationRow): InstagramConversationControlRecord {
@@ -95,6 +103,7 @@ function mapConversation(row: ConversationRow): InstagramConversationControlReco
       resolvedAt: currentCase.resolved_at,
       notificationStatus: currentCase.notification_status,
     } : null,
+    conversationState: row.conversation_state,
   };
 }
 
@@ -136,6 +145,34 @@ export function createInstagramConversationControl(supabase: SupabaseClient): In
         .select("last_intent, last_intent_at").eq("channel", channel).eq("external_user_id", externalUserId).single();
       if (error || !data) throw databaseError("consultar intención", error ?? { message: "conversación inexistente" });
       return { lastIntent: (data.last_intent ?? null) as InstagramIntent | null, lastIntentAt: typeof data.last_intent_at === "string" ? data.last_intent_at : null };
+    },
+    async getConversationContext(channel, externalUserId) {
+      const { data, error } = await supabase.from("instagram_conversations")
+        .select("conversation_state, conversation_state_at, last_product_id, last_variant_id, last_agent_question, last_commercial_action, commercial_context_at")
+        .eq("channel", channel).eq("external_user_id", externalUserId).single();
+      if (error || !data) throw databaseError("consultar contexto", error ?? { message: "conversación inexistente" });
+      return {
+        state: data.conversation_state as InstagramConversationState,
+        stateAt: data.conversation_state_at as string,
+        lastProductId: typeof data.last_product_id === "string" ? data.last_product_id : null,
+        lastVariantId: typeof data.last_variant_id === "string" ? data.last_variant_id : null,
+        lastAgentQuestion: (data.last_agent_question ?? null) as InstagramAgentQuestion | null,
+        lastCommercialAction: (data.last_commercial_action ?? null) as InstagramCommercialAction | null,
+        commercialContextAt: typeof data.commercial_context_at === "string" ? data.commercial_context_at : null,
+      };
+    },
+    async updateConversationContext(channel, externalUserId, patch) {
+      const values: Record<string, unknown> = { updated_at: patch.changedAt };
+      if (patch.state !== undefined) { values.conversation_state = patch.state; values.conversation_state_at = patch.changedAt; }
+      if (patch.lastProductId !== undefined) values.last_product_id = patch.lastProductId;
+      if (patch.lastVariantId !== undefined) values.last_variant_id = patch.lastVariantId;
+      if (patch.lastAgentQuestion !== undefined) values.last_agent_question = patch.lastAgentQuestion;
+      if (patch.lastCommercialAction !== undefined) values.last_commercial_action = patch.lastCommercialAction;
+      if (patch.touchCommercialContext) values.commercial_context_at = patch.changedAt;
+      const { error } = await supabase.from("instagram_conversations").update(values)
+        .eq("channel", channel).eq("external_user_id", externalUserId);
+      if (error) throw databaseError("actualizar contexto", error);
+      return this.getConversationContext(channel, externalUserId);
     },
     async recordIntent(channel, externalUserId, intent, classifiedAt) {
       const { data, error } = await supabase.from("instagram_conversations").update({ last_intent: intent, last_intent_at: classifiedAt })

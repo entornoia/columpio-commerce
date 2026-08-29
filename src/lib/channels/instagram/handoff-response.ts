@@ -18,6 +18,7 @@ export function handoffAcknowledgement(reason: HandoffReason) {
   const timing = timingSentence();
   if (reason === "exchange_return") return `Entiendo 💛 Como se trata de un cambio de una prenda que ya tienes, voy a dejar tu caso con una persona del equipo. ${timing}`;
   if (reason === "after_sales") return `Entiendo 💛 Como tu consulta requiere revisar una compra, voy a dejar tu caso con una persona del equipo. ${timing}`;
+  if (reason === "order_tracking") return `Voy a dejar el seguimiento con una persona del equipo para que revise el estado real de tu pedido. ${timing}`;
   if (reason === "business_proposal") return `Gracias por escribirnos. Voy a dejar tu propuesta con una persona del equipo para que pueda revisarla. ${timing}`;
   if (reason === "human_request") return `Por supuesto. Voy a dejar esta conversación con una persona del equipo. ${timing}`;
   return `Voy a dejar tu consulta con una persona del equipo para que pueda orientarte mejor. ${timing}`;

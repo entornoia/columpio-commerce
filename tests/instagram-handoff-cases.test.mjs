@@ -28,7 +28,7 @@ test("acuse usa SLA válido y omite plazo específico si falta o es inválido", 
 });
 
 test("todas las causas tienen acuse determinista sin políticas inventadas", () => {
-  for (const reason of ["exchange_return", "after_sales", "business_proposal", "human_request", "unknown_escalation"]) {
+  for (const reason of ["exchange_return", "after_sales", "order_tracking", "business_proposal", "human_request", "unknown_escalation"]) {
     const response = handoffAcknowledgement(reason);
     assert.ok(response.length > 30); assert.doesNotMatch(response, /garantía de \d|días para cambiar|reembolso/i);
   }

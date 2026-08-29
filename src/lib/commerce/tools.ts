@@ -1,4 +1,5 @@
 import type { CommerceToolName, CommerceToolResult, InstagramCommerceContext } from "./types";
+import { createPaymentLink } from "./payment-link.ts";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -35,11 +36,14 @@ async function rpc(context: InstagramCommerceContext, name: string, parameters: 
 
 const businessErrors = [
   ["Quantity must be between 1 and 20", "invalid_quantity", "Puedo dejarte entre 1 y 20 unidades de esa variante."],
-  ["Accumulated quantity exceeds 20", "quantity_limit_exceeded", "No puedo dejar más de 20 unidades de la misma variante en el carrito."],
-  ["Cart item not found", "cart_item_not_found", "Esa variante no está en tu carrito."],
-  ["Open cart not found", "open_cart_not_found", "Todavía no tienes un carrito abierto; primero tenemos que elegir una variante."],
-  ["Cart is empty", "empty_cart", "Tu carrito está vacío. Agreguemos una variante antes de armar el pedido."],
+  ["Accumulated quantity exceeds 20", "quantity_limit_exceeded", "No puedo dejar más de 20 unidades de la misma variante en tu selección."],
+  ["Cart item not found", "cart_item_not_found", "Esa variante no está en tu selección."],
+  ["Open cart not found", "open_cart_not_found", "Todavía no tienes piezas seleccionadas; primero tenemos que elegir una variante."],
+  ["Cart is empty", "empty_cart", "Todavía no tienes piezas seleccionadas. Elijamos una variante antes de armar el pedido."],
   ["Product or variant is unavailable", "unavailable", "Esa variante ya no está disponible para agregar."],
+  ["Order not found", "order_not_found", "No encuentro un pedido pendiente de pago en esta conversación."],
+  ["Order cancelled", "order_cancelled", "Ese pedido está cancelado y no puedo generar un link de pago."],
+  ["Order is not pending payment", "order_not_pending", "Ese pedido no está pendiente de pago."],
 ] as const;
 
 async function insufficientStockResult(context: InstagramCommerceContext, variantId: string, operation: CommerceToolName, requestedQuantity: number | null) {
@@ -56,9 +60,9 @@ async function insufficientStockResult(context: InstagramCommerceContext, varian
   const stock = variant.stock;
   let customerMessage: string;
   if (operation === "add_to_cart" && requestedQuantity === 1 && cartQuantity >= stock && stock > 0) {
-    customerMessage = `No puedo agregar otra unidad de ${label} porque ${stock === 1 ? "queda 1 unidad disponible y ya la tienes" : `quedan ${stock} unidades disponibles y ya las tienes`} en el carrito.`;
+    customerMessage = `No puedo agregar otra unidad de ${label} porque ${stock === 1 ? "queda 1 unidad disponible y ya la tienes" : `quedan ${stock} unidades disponibles y ya las tienes`} en tu selección.`;
   } else {
-    customerMessage = `No puedo aplicar esa cantidad a ${label}. ${stock === 1 ? "Queda 1 unidad disponible" : `Hay ${stock} unidades disponibles`}${cartQuantity > 0 ? ` y actualmente tienes ${cartQuantity} en el carrito` : ""}.`;
+    customerMessage = `No puedo aplicar esa cantidad a ${label}. ${stock === 1 ? "Queda 1 unidad disponible" : `Hay ${stock} unidades disponibles`}${cartQuantity > 0 ? ` y actualmente tienes ${cartQuantity} en tu selección` : ""}.`;
   }
   return { status: "business_error", errorType: "business", code: "insufficient_stock", customerMessage, variantId, currentStock: stock, cartQuantity, requestedQuantity } satisfies CommerceToolResult;
 }
@@ -84,6 +88,11 @@ export async function executeCommerceTool(context: InstagramCommerceContext, nam
     }
 
     await context.authorizeMutation();
+    if (name === "create_payment_link") {
+      exactKeys(value, ["payerEmail"]);
+      if (value.payerEmail !== null && typeof value.payerEmail !== "string") throw new Error("payerEmail inválido.");
+      return await createPaymentLink(context, value.payerEmail as string | null);
+    }
     if (name === "create_order") {
       exactKeys(value, []);
       return await rpc(context, "create_instagram_order", { p_external_user_id: context.externalUserId, p_event_id: context.eventId });
@@ -107,5 +116,5 @@ export async function executeCommerceTool(context: InstagramCommerceContext, nam
 }
 
 export function isCommerceToolName(name: string): name is CommerceToolName {
-  return ["add_to_cart", "view_cart", "remove_from_cart", "set_cart_quantity", "create_order"].includes(name);
+  return ["add_to_cart", "view_cart", "remove_from_cart", "set_cart_quantity", "create_order", "create_payment_link"].includes(name);
 }

@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseConfig, isSupabaseConfigured } from "./config";
 
 export async function updateSession(request: NextRequest) {
-  const publicPages = ["/privacy", "/terms", "/data-deletion"];
+  const publicPages = ["/privacy", "/terms", "/data-deletion", "/payment-result"];
   if (publicPages.includes(request.nextUrl.pathname)) {
     return NextResponse.next({ request });
   }
@@ -11,6 +11,11 @@ export async function updateSession(request: NextRequest) {
   // Meta debe poder verificar y entregar eventos sin una sesión administrativa.
   // El POST mantiene su autenticación propia mediante X-Hub-Signature-256.
   if (request.nextUrl.pathname === "/api/webhooks/instagram") {
+    return NextResponse.next({ request });
+  }
+
+  // Flow necesita callbacks públicos exactos; no se abre ninguna otra ruta API.
+  if (["/api/payments/flow/confirmation", "/api/payments/flow/return"].includes(request.nextUrl.pathname)) {
     return NextResponse.next({ request });
   }
 

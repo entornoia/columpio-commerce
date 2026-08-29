@@ -13,7 +13,8 @@ function emojis(value) {
 
 test("la voz transaccional es breve, natural y no repite aperturas robóticas", () => {
   const message = formatCommerceResponse("add_to_cart", { status: "cart", items: [{ ...amelia }], subtotal: 32990 }, { variantId: amelia.variantId });
-  assert.match(message, /dejé .* en tu carrito/i);
+  assert.match(message, /dejé .* en tu pedido/i);
+  assert.doesNotMatch(message, /carrito/i);
   assert.doesNotMatch(message, /^(Listo|Claro|Opciones disponibles)/i);
   assert.doesNotMatch(message, /Si quieres/i);
   assert.ok(emojis(message).length <= 1);

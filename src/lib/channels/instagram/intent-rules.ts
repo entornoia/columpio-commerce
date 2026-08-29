@@ -47,19 +47,33 @@ function isGreeting(text: string) {
   return /^(hola+|buenas|buenos dias|buen dia|buenas tardes|buenas noches|como estan|como estas)$/.test(compact);
 }
 
+function hasExplicitSalesSearch(text: string) {
+  const searchLanguage = /\b(estoy buscando|ando buscando|busco|buscar|necesito|quiero|tienes|tienen)\b/.test(text);
+  const commercialSubject = /\b(prenda|pieza|blazer(?:es)?|chaquetas?|pantalon(?:es)?|blusas?|vestidos?|faldas?|poleras?|talla|colores?|negro|negra|marfil|camel|fiesta|evento|look)\b/.test(text);
+  const contextualSomething = /\b(estoy buscando|ando buscando|busco|tienes|tienen)\s+algo\b/.test(text)
+    && /\b(negro|negra|marfil|camel|fiesta|evento|look|vestir|usar)\b/.test(text);
+  return (searchLanguage && commercialSubject) || contextualSomething;
+}
+
 export function classifyIntentByRules(message: IncomingCommerceMessage, state: InstagramIntentState, now = Date.parse(message.receivedAt)): IntentClassification | null {
   const text = normalize(message.text ?? "");
+  const isEmailReply = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text);
   const isCommercialEllipsis = /^(m|s|l|xl|xxl|talla\s+(m|s|l|xl|xxl)|ese|esa|el negro|la negra|si|si,? dos|si por favor|por favor|dale|ok|bueno|perfecto|hazlo|muestrame|dos|agregalo|agregala|mandame el link)$/.test(text);
-  if (/\b(hablar|comunicarme|contactarme)\s+con\s+(una\s+)?(persona|humana?|ejecutiv[oa]|asesora)|\b(no quiero|sin)\s+(un\s+)?bot\b|\batencion humana\b/.test(text)) return result("human_request", "Solicitud explícita de atención humana");
+  if (/\b(hablar|comunicarme|contactarme)\s+con\s+(una\s+)?(persona|humana?|ejecutiv[oa]|asesora)|\b(estoy buscando|busco|necesito|quiero)\s+(a\s+)?(una\s+)?persona\s+(que\s+)?(me\s+)?(atienda|ayude)?|\b(no quiero|sin)\s+(un\s+)?bot\b|\batencion humana\b/.test(text)) return result("human_request", "Solicitud explícita de atención humana");
   if (isGreeting(text)) return result("general_info", GREETING_REASON);
+  if (/\b(donde esta mi pedido|cuando llega|cuando llegara|ya pague|estado de mi (compra|pedido)|seguimiento (de|del|a mi) pedido|me llego el pedido)\b/.test(text)) return result("order_tracking", "Seguimiento de una compra o pago ya realizado");
   if (/\b(garantia|defectuos[oa]|danad[oa]|roto|reclamo|reembolso|cobro duplicado|no (ha )?llegado|seguimiento (de|del) pedido|problema con (mi|una) compra)\b/.test(text)) return result("after_sales", "Consulta posterior a una compra");
   if (hasPostPurchaseSignal(text)) return result("exchange_return", "Solicitud de cambio o devolución posterior a la compra");
   if (hasChangeSignal(text) && !isPrepurchaseChange(text)) return result("unknown", AMBIGUOUS_EXCHANGE_REASON);
   if (/\b(community manager|manejo de redes|servicios? de (marketing|fotografia|redes)|propuesta comercial|proveedor|colaboracion comercial|embajador[oa]|influencer)\b/.test(text)) return result("business_proposal", "Oferta de servicios o colaboración comercial");
+  if (hasExplicitSalesSearch(text)) return result("sales", "Búsqueda explícita de producto o necesidad de compra");
+  if (isEmailReply) return recentSalesContext(state, now)
+    ? result("sales", "Correo entregado como continuación comercial reciente")
+    : result("unknown", COMMERCIAL_CONTINUATION_REASON);
   if (isCommercialEllipsis) return recentSalesContext(state, now)
     ? result("sales", "Continuación elíptica de contexto comercial reciente")
     : result("unknown", COMMERCIAL_CONTINUATION_REASON);
-  if (/\b(precio|valor|cuanto (sale|cuesta)|stock|disponib|tienes|tienen|talla|color|look|blazers?|chaquetas?|pantalones?|blusas?|vestidos?|sku|carrito|quitar|pedido|pagar|pago|link de pago|recomiend|combinar)\b/.test(text)) return result("sales", "Consulta o acción comercial");
+  if (/\b(precio|valor|cuanto (sale|cuesta)|stock|disponib|tienes|tienen|talla|color|look|blazers?|chaquetas?|pantalon(?:es)?|blusas?|vestidos?|sku|carrito|quitar|pedido|pagar|pago|link de pago|recomiend|combinar)\b/.test(text)) return result("sales", "Consulta o acción comercial");
   if (/\b(donde (estan|queda|se ubican)|ubicacion|direccion|horario|cuando abren|contacto|correo|email)\b/.test(text)) return result("general_info", "Consulta de información general");
   if (isPureSocialReaction(message.text)) return result("social_reaction", "Reacción social sin texto útil");
   if (!message.text && message.imageUrl) return result("sales", "Imagen enviada para consulta o recomendación comercial");

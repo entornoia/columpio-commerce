@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { mapProduct } from "./catalog";
-import type { Product, Variant } from "./types";
+import { mapProduct } from "./catalog.ts";
+import type { Product, Variant } from "./types.ts";
 
 export type CatalogSearchFilters = {
   query?: string;

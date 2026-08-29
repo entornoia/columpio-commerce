@@ -1,4 +1,4 @@
-import { Product, ProductInput } from "./types";
+import type { Product, ProductInput } from "./types.ts";
 
 type DbImage = { id: string; image_url: string; position: number; alt_text: string };
 type DbVariant = { id: string; variant_sku: string; color: string; size: string; stock: number; active: boolean };
@@ -60,4 +60,3 @@ export function toRpcPayload(input: ProductInput, id?: string) {
     })),
   };
 }
-
