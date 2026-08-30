@@ -29,6 +29,6 @@ export type PublicCatalogCategory = {
   slug: string;
   name: string;
   description: string;
-  position: number;
+  sortPosition: number;
   productCount: number;
 };

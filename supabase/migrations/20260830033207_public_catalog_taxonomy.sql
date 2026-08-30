@@ -773,7 +773,7 @@ $$;
 revoke all on function public.get_public_product_by_slug(text, text) from public, anon, authenticated;
 
 create or replace function public.list_public_categories(p_brand_slug text default 'mujer')
-returns table (id uuid, slug text, name text, description text, position integer, product_count bigint)
+returns table (id uuid, slug text, name text, description text, sort_position integer, product_count bigint)
 language sql
 stable
 security definer

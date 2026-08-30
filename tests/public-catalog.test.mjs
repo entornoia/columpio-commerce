@@ -12,6 +12,19 @@ const advisorSearch = await readFile(new URL("../src/lib/catalog-search.ts", imp
 const saveSection = migration.slice(migration.indexOf("create or replace function public.save_catalog_product"), migration.indexOf("create or replace function public.publish_catalog_product"));
 const publishSection = migration.slice(migration.indexOf("create or replace function public.publish_catalog_product"), migration.indexOf("create or replace function public.change_catalog_product_slug"));
 
+test("RETURNS TABLE avoids PostgreSQL output names that conflict with parser keywords", () => {
+  const signatures = [...migration.matchAll(/returns table\s*\(([^)]*)\)/gi)].map((match) => match[1]);
+  const unsafeOutputNames = new Set(["authorization", "binary", "collation", "concurrently", "cross", "current_schema", "freeze", "full", "ilike", "inner", "is", "isnull", "join", "left", "like", "natural", "notnull", "outer", "overlaps", "position", "right", "similar"]);
+
+  assert.ok(signatures.length >= 3);
+  for (const signature of signatures) {
+    const outputNames = signature.split(",").map((column) => column.trim().split(/\s+/)[0].toLowerCase());
+    assert.deepEqual(outputNames.filter((name) => unsafeOutputNames.has(name)), []);
+  }
+  assert.match(migration, /returns table \(id uuid, slug text, name text, description text, sort_position integer, product_count bigint\)/);
+  assert.match(catalog, /sortPosition: Number\(row\.sort_position\)/);
+});
+
 test("014 crea taxonomía y los campos editoriales sin eliminar columnas legacy", () => {
   assert.match(migration, /create table public\.brands/);
   assert.match(migration, /create table public\.categories/);

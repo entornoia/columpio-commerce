@@ -37,7 +37,7 @@ async function rpc<T>(name: string, args?: Record<string, unknown>): Promise<T[]
 
 export const listPublicCategories = cache(async (): Promise<PublicCatalogCategory[]> => {
   const rows = await rpc<RpcRow>("list_public_categories", { p_brand_slug: "mujer" });
-  return rows.map((row) => ({ id: text(row.id), slug: text(row.slug), name: text(row.name), description: text(row.description), position: Number(row.position), productCount: Number(row.product_count) }));
+  return rows.map((row) => ({ id: text(row.id), slug: text(row.slug), name: text(row.name), description: text(row.description), sortPosition: Number(row.sort_position), productCount: Number(row.product_count) }));
 });
 
 export const listPublicProducts = cache(async (categorySlug?: string, limit = 24): Promise<PublicCatalogProduct[]> => {
