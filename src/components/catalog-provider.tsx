@@ -1,22 +1,27 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { Product, ProductInput } from "@/lib/types";
-import { mapProduct, toRpcPayload } from "@/lib/catalog";
+import { CatalogBrand, CatalogCategory, Product, ProductInput } from "@/lib/types";
+import { mapBrand, mapCategory, mapProduct, toRpcPayload } from "@/lib/catalog";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 type CatalogContextValue = {
   products: Product[];
+  brands: CatalogBrand[];
+  categories: CatalogCategory[];
   ready: boolean;
   error: string;
   refresh: () => Promise<void>;
   saveProduct: (input: ProductInput, id?: string) => Promise<{ ok: true; id: string } | { ok: false; message: string }>;
+  publishProduct: (id: string) => Promise<{ ok: true } | { ok: false; message: string }>;
 };
 
 const CatalogContext = createContext<CatalogContextValue | null>(null);
 export function CatalogProvider({ children }: { children: React.ReactNode }) {
   const [products, setProducts] = useState<Product[]>([]);
+  const [brands, setBrands] = useState<CatalogBrand[]>([]);
+  const [categories, setCategories] = useState<CatalogCategory[]>([]);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
 
@@ -24,6 +29,7 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     setError("");
     if (!isSupabaseConfigured()) {
       setProducts([]);
+      setBrands([]); setCategories([]);
       setError("Falta configurar la conexión a Supabase en .env.local.");
       setReady(true);
       return;
@@ -32,6 +38,7 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     const { data: userData, error: userError } = await supabase.auth.getUser();
     if (userError || !userData.user) {
       setProducts([]);
+      setBrands([]); setCategories([]);
       setError("La sesión administrativa no es válida. Vuelve a iniciar sesión.");
       setReady(true);
       return;
@@ -39,19 +46,26 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
     if (claimsError || claimsData?.claims?.role !== "authenticated") {
       setProducts([]);
+      setBrands([]); setCategories([]);
       setError("La sesión no tiene el rol authenticated requerido para consultar el catálogo.");
       setReady(true);
       return;
     }
-    const { data, error: queryError } = await supabase
-      .from("products")
-      .select("*, product_variants(*), product_images(*)")
-      .order("created_at", { ascending: false });
+    const [productsResult, brandsResult, categoriesResult] = await Promise.all([
+      supabase.from("products").select("*, product_variants(*), product_images(*)").order("created_at", { ascending: false }),
+      supabase.from("brands").select("id, code, name, slug, active").order("name"),
+      supabase.from("categories").select("id, brand_id, parent_id, code, name, slug, description, position, active").order("position"),
+    ]);
+    const { data, error: queryError } = productsResult;
     if (queryError) {
       setProducts([]);
+      setBrands([]); setCategories([]);
       setError(`No se pudo cargar el catálogo: ${queryError.message}`);
     } else {
       setProducts((data ?? []).map((row) => mapProduct(row as never)));
+      // Durante el intervalo previo a aplicar 014, el catálogo legacy sigue operativo.
+      setBrands((brandsResult.data ?? []).map((row) => mapBrand(row as Record<string, unknown>)));
+      setCategories((categoriesResult.data ?? []).map((row) => mapCategory(row as Record<string, unknown>)));
     }
     setReady(true);
   }, []);
@@ -67,7 +81,7 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     const supabase = createClient();
     const { data, error: saveError } = await supabase.rpc("save_catalog_product", toRpcPayload({ ...input, variants }, id));
     if (saveError) {
-      if (saveError.code === "23505") return { ok: false, message: "El SKU de producto o de variante ya existe." };
+      if (saveError.code === "23505") return { ok: false, message: "El SKU de producto, variante o slug público ya existe o fue usado anteriormente." };
       if (saveError.code === "23514") return { ok: false, message: "Precio, stock o posición contienen un valor no permitido." };
       return { ok: false, message: `No se pudo guardar: ${saveError.message}` };
     }
@@ -75,7 +89,15 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     return { ok: true, id: String(data) };
   };
 
-  return <CatalogContext.Provider value={{ products, ready, error, refresh, saveProduct }}>{children}</CatalogContext.Provider>;
+  const publishProduct: CatalogContextValue["publishProduct"] = async (id) => {
+    if (!isSupabaseConfigured()) return { ok: false, message: "Falta configurar Supabase en .env.local." };
+    const { error: publishError } = await createClient().rpc("publish_catalog_product", { p_product_id: id });
+    if (publishError) return { ok: false, message: `No se pudo publicar: ${publishError.message}` };
+    await refresh();
+    return { ok: true };
+  };
+
+  return <CatalogContext.Provider value={{ products, brands, categories, ready, error, refresh, saveProduct, publishProduct }}>{children}</CatalogContext.Provider>;
 }
 
 export function useCatalog() {

@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test:instagram": "node --conditions=react-server --experimental-strip-types --test tests/instagram-channel.test.mjs tests/instagram-handoff.test.mjs tests/instagram-profile.test.mjs tests/instagram-commerce.test.mjs tests/instagram-commerce-voice.test.mjs tests/instagram-flow-payment-link.test.mjs tests/instagram-intent-router.test.mjs tests/instagram-handoff-cases.test.mjs tests/instagram-conversation-state.test.mjs tests/instagram-semantic-commerce.test.mjs tests/instagram-advisor-mode.test.mjs tests/admin-auth.test.mjs"
+    "test:instagram": "node --conditions=react-server --experimental-strip-types --test tests/instagram-channel.test.mjs tests/instagram-handoff.test.mjs tests/instagram-profile.test.mjs tests/instagram-commerce.test.mjs tests/instagram-commerce-voice.test.mjs tests/instagram-flow-payment-link.test.mjs tests/instagram-intent-router.test.mjs tests/instagram-handoff-cases.test.mjs tests/instagram-conversation-state.test.mjs tests/instagram-semantic-commerce.test.mjs tests/instagram-advisor-mode.test.mjs tests/admin-auth.test.mjs",
+    "test:all": "pnpm test:instagram && node --conditions=react-server --experimental-strip-types --test tests/public-catalog.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
@@ -25,6 +26,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.2",
+    "supabase": "2.116.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   },

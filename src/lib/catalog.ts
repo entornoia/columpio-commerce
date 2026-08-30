@@ -1,4 +1,4 @@
-import type { Product, ProductInput } from "./types.ts";
+import type { CatalogBrand, CatalogCategory, Product, ProductInput, PublicationStatus } from "./types.ts";
 
 type DbImage = { id: string; image_url: string; position: number; alt_text: string };
 type DbVariant = { id: string; variant_sku: string; color: string; size: string; stock: number; active: boolean };
@@ -7,6 +7,9 @@ type DbProduct = {
   subcategory: string; price: number | string; style: string; season: string;
   formality: string; fit: string; material: string; occasions: string[];
   active: boolean; created_at: string; updated_at: string;
+  brand_id?: string; category_id?: string | null; slug?: string; short_description?: string;
+  publication_status?: PublicationStatus; published_at?: string | null;
+  seo_title?: string; seo_description?: string;
   product_variants: DbVariant[]; product_images: DbImage[];
 };
 
@@ -26,6 +29,14 @@ export function mapProduct(row: DbProduct): Product {
     material: row.material,
     occasions: row.occasions ?? [],
     active: row.active,
+    brandId: row.brand_id ?? "",
+    categoryId: row.category_id ?? null,
+    slug: row.slug ?? "",
+    shortDescription: row.short_description ?? "",
+    publicationStatus: row.publication_status ?? "draft",
+    publishedAt: row.published_at ?? null,
+    seoTitle: row.seo_title ?? "",
+    seoDescription: row.seo_description ?? "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     variants: (row.product_variants ?? []).map((variant) => ({
@@ -50,6 +61,9 @@ export function toRpcPayload(input: ProductInput, id?: string) {
       category: input.category.trim(), subcategory: input.subcategory.trim(), price: input.price,
       style: input.style.trim(), season: input.season.trim(), formality: input.formality.trim(),
       fit: input.fit.trim(), material: input.material.trim(), occasions: input.occasions, active: input.active,
+      brand_id: input.brandId || null, category_id: input.categoryId, slug: input.slug.trim(),
+      short_description: input.shortDescription.trim(), publication_status: input.publicationStatus,
+      seo_title: input.seoTitle.trim(), seo_description: input.seoDescription.trim(),
     },
     p_variants: input.variants.map((variant) => ({
       id: variant.id, variant_sku: variant.variantSku.trim().toUpperCase(), color: variant.color.trim(),
@@ -58,5 +72,17 @@ export function toRpcPayload(input: ProductInput, id?: string) {
     p_images: input.images.map((image) => ({
       id: image.id, image_url: image.imageUrl.trim(), position: image.position, alt_text: image.altText.trim(),
     })),
+  };
+}
+
+export function mapBrand(row: Record<string, unknown>): CatalogBrand {
+  return { id: String(row.id), code: String(row.code), name: String(row.name), slug: String(row.slug), active: Boolean(row.active) };
+}
+
+export function mapCategory(row: Record<string, unknown>): CatalogCategory {
+  return {
+    id: String(row.id), brandId: String(row.brand_id), parentId: row.parent_id ? String(row.parent_id) : null,
+    code: String(row.code), name: String(row.name), slug: String(row.slug), description: String(row.description ?? ""),
+    position: Number(row.position), active: Boolean(row.active),
   };
 }

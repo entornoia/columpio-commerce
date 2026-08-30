@@ -2,19 +2,20 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Product, ProductInput, Variant } from "@/lib/types";
+import { Product, ProductInput, PublicationStatus, Variant } from "@/lib/types";
 import { useCatalog } from "./catalog-provider";
 import { Icon } from "./icons";
 
 const emptyVariant = (): Variant => ({ id: crypto.randomUUID(), variantSku: "", color: "", size: "", stock: 0, active: true });
-const emptyProduct: ProductInput = { sku: "", name: "", description: "", category: "", subcategory: "", price: 0, style: "", season: "", formality: "", fit: "", material: "", occasions: [], active: true, variants: [emptyVariant()], images: [] };
+const emptyProduct: ProductInput = { sku: "", name: "", description: "", category: "", subcategory: "", price: 0, style: "", season: "", formality: "", fit: "", material: "", occasions: [], active: true, brandId: "", categoryId: null, slug: "", shortDescription: "", publicationStatus: "draft", publishedAt: null, seoTitle: "", seoDescription: "", variants: [emptyVariant()], images: [] };
 
 export function ProductForm({ product }: { product?: Product }) {
   const router = useRouter();
-  const { saveProduct } = useCatalog();
+  const { brands, categories, saveProduct, publishProduct } = useCatalog();
   const [form, setForm] = useState<ProductInput>(product ? { ...product, variants: product.variants.map((item) => ({ ...item })), occasions: [...product.occasions] } : emptyProduct);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const set = <K extends keyof ProductInput>(key: K, value: ProductInput[K]) => setForm((current) => ({ ...current, [key]: value }));
   const updateVariant = (id: string, key: keyof Variant, value: string | number | boolean) => set("variants", form.variants.map((item) => item.id === id ? { ...item, [key]: value } : item));
   const submit = async (event: FormEvent) => {
@@ -24,12 +25,25 @@ export function ProductForm({ product }: { product?: Product }) {
     if (!result.ok) return setError(result.message);
     router.push("/productos");
   };
+  const publish = async () => {
+    if (!product?.id) return setError("Guarda el producto antes de publicarlo.");
+    setError(""); setPublishing(true);
+    const result = await publishProduct(product.id);
+    setPublishing(false);
+    if (!result.ok) return setError(result.message);
+    router.push("/productos");
+  };
   return <form onSubmit={submit} className="product-form">
     {error && <div className="form-error">{error}</div>}
     <section className="form-section"><div className="section-heading"><span>01</span><div><h2>Información del producto</h2><p>Datos principales para identificar y organizar la prenda.</p></div></div>
       <div className="form-grid">
         <label>SKU <input required value={form.sku} onChange={(e) => set("sku", e.target.value)} placeholder="CM-004" /></label>
         <label>Nombre <input required value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Nombre del producto" /></label>
+        <label>Marca <select required value={form.brandId} onChange={(e) => { set("brandId", e.target.value); set("categoryId", null); }}><option value="">Seleccionar marca</option>{brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select></label>
+        <label>Categoría normalizada <select value={form.categoryId ?? ""} onChange={(e) => set("categoryId", e.target.value || null)}><option value="">Sin mapear</option>{categories.filter((category) => !form.brandId || category.brandId === form.brandId).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+        <label>Slug público <input required value={form.slug} onChange={(e) => set("slug", e.target.value)} placeholder="vestido-alba" /><small>Minúsculas, sin tildes y separado por guiones.</small></label>
+        <label>Estado editorial <select value={form.publicationStatus} onChange={(e) => set("publicationStatus", e.target.value as PublicationStatus)} disabled={form.publicationStatus === "published"}><option value="draft">Borrador</option><option value="ready">Listo para publicar</option>{form.publicationStatus === "published" && <option value="published">Publicado</option>}<option value="archived">Archivado</option></select></label>
+        <label className="span-2">Descripción corta <textarea value={form.shortDescription} onChange={(e) => set("shortDescription", e.target.value)} placeholder="Resumen breve para cards y colecciones" /></label>
         <label className="span-2">Descripción <textarea value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="Describe la prenda, su caída y detalles relevantes" /></label>
         <label>Categoría <input required value={form.category} onChange={(e) => set("category", e.target.value)} placeholder="Ej. Chaquetas" /></label>
         <label>Subcategoría <input value={form.subcategory} onChange={(e) => set("subcategory", e.target.value)} placeholder="Ej. Blazers" /></label>
@@ -48,7 +62,9 @@ export function ProductForm({ product }: { product?: Product }) {
     </section>
     <section className="form-section"><div className="section-heading"><span>03</span><div><h2>Imágenes y estado</h2><p>Estructura preparada para URLs de imágenes de Supabase Storage.</p></div></div>
       <div className="form-grid"><label className="span-2">URL de imagen principal <input type="url" value={form.images[0]?.imageUrl ?? ""} onChange={(e) => set("images", e.target.value ? [{ id: form.images[0]?.id ?? crypto.randomUUID(), imageUrl: e.target.value, position: 0, altText: form.name }] : [])} placeholder="https://..." /></label><label className="toggle-label"><input type="checkbox" checked={form.active} onChange={(e) => set("active", e.target.checked)} /><span/> Producto activo</label></div>
+      <div className="form-grid"><label>Título SEO <input value={form.seoTitle} onChange={(e) => set("seoTitle", e.target.value)} placeholder="Título para buscadores" /></label><label>Descripción SEO <textarea value={form.seoDescription} onChange={(e) => set("seoDescription", e.target.value)} placeholder="Descripción para buscadores y redes" /></label></div>
     </section>
-    <div className="form-actions"><button type="button" className="text-button" onClick={() => router.back()}>Cancelar</button><button className="primary-button" type="submit" disabled={saving}>{saving ? "Guardando…" : product ? "Guardar cambios" : "Crear producto"}<Icon name="arrow" size={18}/></button></div>
+    {product && form.publicationStatus !== "published" && <p className="form-help">Guarda primero cualquier cambio pendiente. Publicar valida la versión actualmente guardada.</p>}
+    <div className="form-actions"><button type="button" className="text-button" onClick={() => router.back()}>Cancelar</button>{product && form.publicationStatus !== "published" && <button className="secondary-button" type="button" disabled={saving || publishing} onClick={() => void publish()}>{publishing ? "Publicando…" : "Publicar explícitamente"}</button>}<button className="primary-button" type="submit" disabled={saving || publishing}>{saving ? "Guardando…" : product ? "Guardar cambios" : "Crear producto"}<Icon name="arrow" size={18}/></button></div>
   </form>;
 }
