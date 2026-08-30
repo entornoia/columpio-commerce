@@ -12,6 +12,8 @@ const manager = readFileSync(new URL("../src/components/product-image-manager.ts
 const page = readFileSync(new URL("../src/app/productos/nuevo/page.tsx", import.meta.url), "utf8");
 const advisor = readFileSync(new URL("../src/lib/channels/instagram/advisor-orchestrator.ts", import.meta.url), "utf8");
 const publicCatalogMigration = readFileSync(new URL("../supabase/migrations/20260830033207_public_catalog_taxonomy.sql", import.meta.url), "utf8");
+const imageStorageMigration = readFileSync(new URL("../supabase/migrations/20260830152222_product_image_storage.sql", import.meta.url), "utf8");
+const permissionFixMigration = readFileSync(new URL("../supabase/migrations/20260830221200_fix_product_intake_save_permissions.sql", import.meta.url), "utf8");
 const advisorSearch = readFileSync(new URL("../src/lib/catalog-search.ts", import.meta.url), "utf8");
 
 test("016 es aditiva, transaccional y preserva el catálogo existente", () => {
@@ -154,4 +156,72 @@ test("UX foto-first conserva preview, límites y formulario posterior", () => {
   assert.match(intake, /Sube una foto de la prenda/); assert.match(intake, /JPEG, PNG o WebP · máximo 5 MiB/);
   assert.match(intake, /Análisis completado/); assert.match(intake, /<ProductForm product=\{preparedProduct\}/);
   assert.match(intake, /Seleccionar una foto no crea registros/); assert.match(form, /ProductImageManager/);
+});
+
+test("017 corrige el wrapper como SECURITY DEFINER con search_path vacío", () => {
+  assert.match(permissionFixMigration, /^begin;/i);
+  assert.match(permissionFixMigration, /commit;\s*$/i);
+  const wrapper = permissionFixMigration.slice(
+    permissionFixMigration.indexOf("create or replace function public.save_catalog_product("),
+    permissionFixMigration.indexOf("alter function public.save_catalog_product("),
+  );
+  assert.match(wrapper, /security definer/);
+  assert.match(wrapper, /set search_path = ''/);
+  assert.doesNotMatch(wrapper, /security invoker/);
+});
+
+test("017 autentica antes de leer o mutar el producto", () => {
+  const wrapper = permissionFixMigration.slice(
+    permissionFixMigration.indexOf("create or replace function public.save_catalog_product("),
+    permissionFixMigration.indexOf("alter function public.save_catalog_product("),
+  );
+  const authentication = wrapper.indexOf("if (select auth.uid()) is null");
+  const firstProductRead = wrapper.indexOf("select setup_status");
+  const firstProductWrite = wrapper.indexOf("update public.products");
+  assert.ok(authentication > 0);
+  assert.ok(authentication < firstProductRead);
+  assert.ok(authentication < firstProductWrite);
+  assert.match(wrapper, /raise insufficient_privilege using message = 'Authentication required'/);
+});
+
+test("017 expone sólo el wrapper a authenticated", () => {
+  assert.match(permissionFixMigration, /revoke all on function public\.save_catalog_product\(jsonb, jsonb, jsonb\) from public, anon, authenticated;/);
+  assert.match(permissionFixMigration, /grant execute on function public\.save_catalog_product\(jsonb, jsonb, jsonb\) to authenticated;/);
+  for (const helper of ["save_catalog_product_legacy_016", "save_catalog_product_legacy_015"]) {
+    assert.match(permissionFixMigration, new RegExp(`revoke all on function public\\.${helper}\\(jsonb, jsonb, jsonb\\) from public, anon, authenticated;`));
+    assert.doesNotMatch(permissionFixMigration, new RegExp(`grant execute on function public\\.${helper}`));
+  }
+});
+
+test("017 fija ownership coherente para toda la cadena privada", () => {
+  for (const fn of ["save_catalog_product", "save_catalog_product_legacy_016", "save_catalog_product_legacy_015"]) {
+    assert.match(permissionFixMigration, new RegExp(`alter function public\\.${fn}\\(jsonb, jsonb, jsonb\\) owner to postgres;`));
+  }
+});
+
+test("regresión de permisos rechaza invoker hacia auxiliar privada y acepta definer con owner común", () => {
+  const brokenWrapper = migration.slice(
+    migration.indexOf("create or replace function public.save_catalog_product(p_product"),
+    migration.indexOf("create or replace function public.publish_catalog_product"),
+  );
+  assert.match(brokenWrapper, /security invoker/);
+  assert.match(brokenWrapper, /public\.save_catalog_product_legacy_016/);
+  assert.match(migration, /revoke all on function public\.save_catalog_product_legacy_016[\s\S]*authenticated/);
+
+  assert.match(permissionFixMigration, /security definer/);
+  assert.match(permissionFixMigration, /public\.save_catalog_product_legacy_016/);
+  assert.equal((permissionFixMigration.match(/owner to postgres;/g) ?? []).length, 3);
+});
+
+test("017 conserva intake, Storage, publicación y catálogo sin cambios funcionales", () => {
+  for (const invariant of [
+    "prior_setup_status in ('technical_draft', 'in_progress')",
+    "set setup_status = 'complete', active = requested_active",
+    "set setup_status = 'in_progress', active = false",
+    "public.catalog_product_setup_is_complete(saved_id)",
+    "public.save_catalog_product_legacy_016(safe_product, p_variants, p_images)",
+  ]) assert.ok(permissionFixMigration.includes(invariant));
+  assert.match(imageStorageMigration, /protect_storage_images_during_catalog_save/);
+  assert.match(imageStorageMigration, /public\.save_catalog_product_legacy_015\(p_product, p_variants, legacy_images\)/);
+  assert.doesNotMatch(permissionFixMigration, /create table|alter table|drop |truncate|publish_catalog_product|list_public_products|advisor/i);
 });
