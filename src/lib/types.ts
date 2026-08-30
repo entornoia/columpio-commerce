@@ -23,6 +23,8 @@ export type ProductImage = {
 };
 
 export type PublicationStatus = "draft" | "ready" | "published" | "archived";
+export type ProductSetupStatus = "technical_draft" | "in_progress" | "complete";
+export type ProductAnalysisStatus = "not_started" | "processing" | "completed" | "failed";
 export type CatalogBrand = { id: string; code: string; name: string; slug: string; active: boolean };
 export type CatalogCategory = {
   id: string; brandId: string; parentId: string | null; code: string; name: string;
@@ -52,6 +54,14 @@ export type Product = {
   publishedAt: string | null;
   seoTitle: string;
   seoDescription: string;
+  setupStatus: ProductSetupStatus;
+  setupStartedAt: string | null;
+  setupUpdatedAt: string | null;
+  setupExpiresAt: string | null;
+  analysisStatus: ProductAnalysisStatus;
+  analysisCompletedAt: string | null;
+  analysisModel: string | null;
+  analysisError: string | null;
   createdAt: string;
   updatedAt: string;
   variants: Variant[];

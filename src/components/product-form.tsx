@@ -8,9 +8,9 @@ import { Icon } from "./icons";
 import { ProductImageManager } from "./product-image-manager";
 
 const emptyVariant = (): Variant => ({ id: crypto.randomUUID(), variantSku: "", color: "", size: "", stock: 0, active: true });
-const emptyProduct: ProductInput = { sku: "", name: "", description: "", category: "", subcategory: "", price: 0, style: "", season: "", formality: "", fit: "", material: "", occasions: [], active: true, brandId: "", categoryId: null, slug: "", shortDescription: "", publicationStatus: "draft", publishedAt: null, seoTitle: "", seoDescription: "", variants: [emptyVariant()], images: [] };
+const emptyProduct: ProductInput = { sku: "", name: "", description: "", category: "", subcategory: "", price: 0, style: "", season: "", formality: "", fit: "", material: "", occasions: [], active: true, brandId: "", categoryId: null, slug: "", shortDescription: "", publicationStatus: "draft", publishedAt: null, seoTitle: "", seoDescription: "", setupStatus: "complete", setupStartedAt: null, setupUpdatedAt: null, setupExpiresAt: null, analysisStatus: "not_started", analysisCompletedAt: null, analysisModel: null, analysisError: null, variants: [emptyVariant()], images: [] };
 
-export function ProductForm({ product }: { product?: Product }) {
+export function ProductForm({ product, intakeMode = false, aiSuggestedFields = [] }: { product?: Product; intakeMode?: boolean; aiSuggestedFields?: (keyof ProductInput)[] }) {
   const router = useRouter();
   const { brands, categories, saveProduct, publishProduct } = useCatalog();
   const [form, setForm] = useState<ProductInput>(product ? { ...product, variants: product.variants.map((item) => ({ ...item })), occasions: [...product.occasions] } : emptyProduct);
@@ -19,6 +19,7 @@ export function ProductForm({ product }: { product?: Product }) {
   const [publishing, setPublishing] = useState(false);
   const set = <K extends keyof ProductInput>(key: K, value: ProductInput[K]) => setForm((current) => ({ ...current, [key]: value }));
   const updateVariant = (id: string, key: keyof Variant, value: string | number | boolean) => set("variants", form.variants.map((item) => item.id === id ? { ...item, [key]: value } : item));
+  const aiHint = (key: keyof ProductInput) => aiSuggestedFields.includes(key) ? <small className="ai-field-hint">Sugerido por IA · revísalo antes de guardar.</small> : null;
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setError(""); setSaving(true);
     const result = await saveProduct(form, product?.id);
@@ -39,7 +40,7 @@ export function ProductForm({ product }: { product?: Product }) {
     <section className="form-section"><div className="section-heading"><span>01</span><div><h2>Información del producto</h2><p>Datos principales para identificar y organizar la prenda.</p></div></div>
       <div className="form-grid">
         <label>SKU <input required value={form.sku} onChange={(e) => set("sku", e.target.value)} placeholder="CM-004" /></label>
-        <label>Nombre <input required value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Nombre del producto" /></label>
+        <label>Nombre <input required value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="Nombre del producto" />{aiHint("name")}</label>
         <label>Marca <select required value={form.brandId} onChange={(e) => { set("brandId", e.target.value); set("categoryId", null); }}><option value="">Seleccionar marca</option>{brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select></label>
         <label>Categoría normalizada <select value={form.categoryId ?? ""} onChange={(e) => set("categoryId", e.target.value || null)}><option value="">Sin mapear</option>{categories.filter((category) => !form.brandId || category.brandId === form.brandId).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
         <label>Slug público <input required value={form.slug} onChange={(e) => set("slug", e.target.value)} placeholder="vestido-alba" /><small>Minúsculas, sin tildes y separado por guiones.</small></label>
@@ -47,13 +48,13 @@ export function ProductForm({ product }: { product?: Product }) {
         <label className="span-2">Descripción corta <textarea value={form.shortDescription} onChange={(e) => set("shortDescription", e.target.value)} placeholder="Resumen breve para cards y colecciones" /></label>
         <label className="span-2">Descripción <textarea value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="Describe la prenda, su caída y detalles relevantes" /></label>
         <label>Categoría <input required value={form.category} onChange={(e) => set("category", e.target.value)} placeholder="Ej. Chaquetas" /></label>
-        <label>Subcategoría <input value={form.subcategory} onChange={(e) => set("subcategory", e.target.value)} placeholder="Ej. Blazers" /></label>
-        <label>Precio (CLP) <input required type="number" min="0" value={form.price} onChange={(e) => set("price", Number(e.target.value))} /></label>
-        <label>Material <input value={form.material} onChange={(e) => set("material", e.target.value)} placeholder="Ej. Lino y viscosa" /></label>
-        <label>Estilo <input value={form.style} onChange={(e) => set("style", e.target.value)} placeholder="Ej. Minimalista" /></label>
-        <label>Temporada <input value={form.season} onChange={(e) => set("season", e.target.value)} placeholder="Ej. Todo el año" /></label>
-        <label>Formalidad <input value={form.formality} onChange={(e) => set("formality", e.target.value)} placeholder="Ej. Semi formal" /></label>
-        <label>Fit <input value={form.fit} onChange={(e) => set("fit", e.target.value)} placeholder="Ej. Regular" /></label>
+        <label>Subcategoría <input value={form.subcategory} onChange={(e) => set("subcategory", e.target.value)} placeholder="Ej. Blazers" />{aiHint("subcategory")}</label>
+        <label>Precio (CLP) <input required type="number" min={intakeMode ? 1 : 0} value={form.price} onChange={(e) => set("price", Number(e.target.value))} />{intakeMode && <small>Ingresa el precio comercial; la IA no completa este dato.</small>}</label>
+        <label>Material aparente / composición conocida <input value={form.material} onChange={(e) => set("material", e.target.value)} placeholder="Ej. Lino y viscosa" />{aiHint("material")}</label>
+        <label>Estilo <input value={form.style} onChange={(e) => set("style", e.target.value)} placeholder="Ej. Minimalista" />{aiHint("style")}</label>
+        <label>Temporada <input value={form.season} onChange={(e) => set("season", e.target.value)} placeholder="Ej. Todo el año" />{aiHint("season")}</label>
+        <label>Formalidad <input value={form.formality} onChange={(e) => set("formality", e.target.value)} placeholder="Ej. Semi formal" />{aiHint("formality")}</label>
+        <label>Fit <input value={form.fit} onChange={(e) => set("fit", e.target.value)} placeholder="Ej. Regular" />{aiHint("fit")}</label>
         <label className="span-2">Ocasiones <input value={form.occasions.join(", ")} onChange={(e) => set("occasions", e.target.value.split(",").map((item) => item.trim()).filter(Boolean))} placeholder="Oficina, cena, evento" /><small>Separa cada ocasión con una coma.</small></label>
       </div>
     </section>
@@ -66,7 +67,8 @@ export function ProductForm({ product }: { product?: Product }) {
       <div className="form-grid"><label className="toggle-label"><input type="checkbox" checked={form.active} onChange={(e) => set("active", e.target.checked)} /><span/> Producto activo</label></div>
       <div className="form-grid"><label>Título SEO <input value={form.seoTitle} onChange={(e) => set("seoTitle", e.target.value)} placeholder="Título para buscadores" /></label><label>Descripción SEO <textarea value={form.seoDescription} onChange={(e) => set("seoDescription", e.target.value)} placeholder="Descripción para buscadores y redes" /></label></div>
     </section>
-    {product && form.publicationStatus !== "published" && <p className="form-help">Guarda primero cualquier cambio pendiente. Publicar valida la versión actualmente guardada.</p>}
-    <div className="form-actions"><button type="button" className="text-button" onClick={() => router.back()}>Cancelar</button>{product && form.publicationStatus !== "published" && <button className="secondary-button" type="button" disabled={saving || publishing} onClick={() => void publish()}>{publishing ? "Publicando…" : "Publicar explícitamente"}</button>}<button className="primary-button" type="submit" disabled={saving || publishing}>{saving ? "Guardando…" : product ? "Guardar cambios" : "Crear producto"}<Icon name="arrow" size={18}/></button></div>
+    {product && form.publicationStatus !== "published" && !intakeMode && <p className="form-help">Guarda primero cualquier cambio pendiente. Publicar valida la versión actualmente guardada.</p>}
+    {intakeMode && <p className="form-help">La fotografía y el análisis ya están guardados. Completa manualmente SKU, precio, tallas y stock. La publicación seguirá siendo una acción posterior.</p>}
+    <div className="form-actions"><button type="button" className="text-button" onClick={() => router.back()}>Cancelar</button>{product && form.publicationStatus !== "published" && !intakeMode && <button className="secondary-button" type="button" disabled={saving || publishing} onClick={() => void publish()}>{publishing ? "Publicando…" : "Publicar explícitamente"}</button>}<button className="primary-button" type="submit" disabled={saving || publishing}>{saving ? "Guardando…" : intakeMode ? "Guardar producto" : product ? "Guardar cambios" : "Crear producto"}<Icon name="arrow" size={18}/></button></div>
   </form>;
 }

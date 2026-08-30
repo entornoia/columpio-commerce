@@ -1,4 +1,4 @@
-import type { CatalogBrand, CatalogCategory, Product, ProductInput, PublicationStatus } from "./types.ts";
+import type { CatalogBrand, CatalogCategory, Product, ProductAnalysisStatus, ProductInput, ProductSetupStatus, PublicationStatus } from "./types.ts";
 
 type DbImage = {
   id: string; image_url: string; position: number; alt_text: string;
@@ -15,6 +15,9 @@ type DbProduct = {
   brand_id?: string; category_id?: string | null; slug?: string; short_description?: string;
   publication_status?: PublicationStatus; published_at?: string | null;
   seo_title?: string; seo_description?: string;
+  setup_status?: ProductSetupStatus; setup_started_at?: string | null; setup_updated_at?: string | null;
+  setup_expires_at?: string | null; analysis_status?: ProductAnalysisStatus;
+  analysis_completed_at?: string | null; analysis_model?: string | null; analysis_error?: string | null;
   product_variants: DbVariant[]; product_images: DbImage[];
 };
 
@@ -42,6 +45,14 @@ export function mapProduct(row: DbProduct): Product {
     publishedAt: row.published_at ?? null,
     seoTitle: row.seo_title ?? "",
     seoDescription: row.seo_description ?? "",
+    setupStatus: row.setup_status ?? "complete",
+    setupStartedAt: row.setup_started_at ?? null,
+    setupUpdatedAt: row.setup_updated_at ?? null,
+    setupExpiresAt: row.setup_expires_at ?? null,
+    analysisStatus: row.analysis_status ?? "not_started",
+    analysisCompletedAt: row.analysis_completed_at ?? null,
+    analysisModel: row.analysis_model ?? null,
+    analysisError: row.analysis_error ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     variants: (row.product_variants ?? []).map((variant) => ({

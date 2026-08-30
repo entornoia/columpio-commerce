@@ -6,6 +6,7 @@ const migration = await readFile(new URL("../supabase/migrations/20260830152222_
 const types = await readFile(new URL("../src/lib/types.ts", import.meta.url), "utf8");
 const catalogMapper = await readFile(new URL("../src/lib/catalog.ts", import.meta.url), "utf8");
 const imageManager = await readFile(new URL("../src/components/product-image-manager.tsx", import.meta.url), "utf8");
+const imageUpload = await readFile(new URL("../src/lib/product-image-upload.ts", import.meta.url), "utf8");
 const productForm = await readFile(new URL("../src/components/product-form.tsx", import.meta.url), "utf8");
 const storefrontCatalog = await readFile(new URL("../src/lib/storefront/catalog.ts", import.meta.url), "utf8");
 const productCard = await readFile(new URL("../src/components/storefront/product-card.tsx", import.meta.url), "utf8");
@@ -29,7 +30,7 @@ test("firmas RETURNS TABLE evitan identificadores ambiguos de PostgreSQL", () =>
     assert.deepEqual(names.filter((name) => unsafe.has(name)), []);
   }
   assert.match(migration, /image_position integer/);
-  assert.match(imageManager, /row\?\.image_position/);
+  assert.match(imageUpload, /row\?\.image_position/);
 });
 
 test("015 crea el bucket público con límite y MIME exactos", () => {
@@ -57,17 +58,18 @@ test("estados, MIME, tamaño y metadata quedan restringidos", () => {
 
 test("saga de upload reserva, finaliza, falla y cancela", () => {
   for (const rpc of ["reserve_product_image_upload", "finalize_product_image_upload", "fail_product_image_upload", "cancel_product_image_upload"]) assert.match(migration, new RegExp(`function public\\.${rpc}`));
-  assert.match(imageManager, /upsert: false/);
-  assert.match(imageManager, /reserve_product_image_upload/);
-  assert.match(imageManager, /\.upload\(storagePath/);
-  assert.match(imageManager, /finalize_product_image_upload/);
-  assert.match(imageManager, /fail_product_image_upload/);
+  assert.match(imageManager, /uploadProductImage/);
+  assert.match(imageUpload, /upsert: false/);
+  assert.match(imageUpload, /reserve_product_image_upload/);
+  assert.match(imageUpload, /\.upload\(storagePath/);
+  assert.match(imageUpload, /finalize_product_image_upload/);
+  assert.match(imageUpload, /fail_product_image_upload/);
 });
 
 test("saga de borrado usa delete_pending y compensación", () => {
   for (const rpc of ["begin_product_image_deletion", "finalize_product_image_deletion", "cancel_product_image_deletion"]) assert.match(migration, new RegExp(`function public\\.${rpc}`));
   assert.match(imageManager, /begin_product_image_deletion/);
-  assert.match(imageManager, /storage\.from\(BUCKET\)\.remove/);
+  assert.match(imageManager, /storage\.from\(PRODUCT_IMAGE_BUCKET\)\.remove/);
   assert.match(imageManager, /cancel_product_image_deletion/);
   assert.match(imageManager, /finalize_product_image_deletion/);
 });
@@ -119,9 +121,9 @@ test("RPC públicas entregan exclusivamente imágenes ready", () => {
 test("administración exige producto real y valida archivos", () => {
   assert.match(productForm, /Guarda primero el producto/);
   assert.match(productForm, /ProductImageManager productId=\{product\.id\}/);
-  assert.match(imageManager, /MAX_FILE_SIZE = 5 \* 1024 \* 1024/);
-  assert.match(imageManager, /image\/jpeg/);
-  assert.match(imageManager, /imageDimensions/);
+  assert.match(imageUpload, /MAX_PRODUCT_IMAGE_SIZE = 5 \* 1024 \* 1024/);
+  assert.match(imageUpload, /image\/jpeg/);
+  assert.match(imageUpload, /imageDimensions/);
   assert.match(imageManager, /multiple accept=/);
 });
 
