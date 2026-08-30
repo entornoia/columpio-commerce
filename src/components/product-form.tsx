@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Product, ProductInput, PublicationStatus, Variant } from "@/lib/types";
 import { useCatalog } from "./catalog-provider";
 import { Icon } from "./icons";
+import { ProductImageManager } from "./product-image-manager";
 
 const emptyVariant = (): Variant => ({ id: crypto.randomUUID(), variantSku: "", color: "", size: "", stock: 0, active: true });
 const emptyProduct: ProductInput = { sku: "", name: "", description: "", category: "", subcategory: "", price: 0, style: "", season: "", formality: "", fit: "", material: "", occasions: [], active: true, brandId: "", categoryId: null, slug: "", shortDescription: "", publicationStatus: "draft", publishedAt: null, seoTitle: "", seoDescription: "", variants: [emptyVariant()], images: [] };
@@ -61,7 +62,8 @@ export function ProductForm({ product }: { product?: Product }) {
       <button type="button" className="secondary-button" onClick={() => set("variants", [...form.variants, emptyVariant()])}><Icon name="plus" size={17}/> Agregar otra variante</button>
     </section>
     <section className="form-section"><div className="section-heading"><span>03</span><div><h2>Imágenes y estado</h2><p>Estructura preparada para URLs de imágenes de Supabase Storage.</p></div></div>
-      <div className="form-grid"><label className="span-2">URL de imagen principal <input type="url" value={form.images[0]?.imageUrl ?? ""} onChange={(e) => set("images", e.target.value ? [{ id: form.images[0]?.id ?? crypto.randomUUID(), imageUrl: e.target.value, position: 0, altText: form.name }] : [])} placeholder="https://..." /></label><label className="toggle-label"><input type="checkbox" checked={form.active} onChange={(e) => set("active", e.target.checked)} /><span/> Producto activo</label></div>
+      {product ? <ProductImageManager productId={product.id} productName={form.name} images={form.images} onChange={(images) => set("images", images)}/> : <div className="image-manager-empty"><strong>Guarda primero el producto</strong><p>Después podrás cargar fotografías usando su identificador definitivo.</p></div>}
+      <div className="form-grid"><label className="toggle-label"><input type="checkbox" checked={form.active} onChange={(e) => set("active", e.target.checked)} /><span/> Producto activo</label></div>
       <div className="form-grid"><label>Título SEO <input value={form.seoTitle} onChange={(e) => set("seoTitle", e.target.value)} placeholder="Título para buscadores" /></label><label>Descripción SEO <textarea value={form.seoDescription} onChange={(e) => set("seoDescription", e.target.value)} placeholder="Descripción para buscadores y redes" /></label></div>
     </section>
     {product && form.publicationStatus !== "published" && <p className="form-help">Guarda primero cualquier cambio pendiente. Publicar valida la versión actualmente guardada.</p>}

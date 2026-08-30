@@ -9,7 +9,9 @@ type RpcRow = Record<string, unknown>;
 function text(value: unknown) { return typeof value === "string" ? value : ""; }
 function array<T>(value: unknown) { return Array.isArray(value) ? value as T[] : []; }
 function images(value: unknown): PublicCatalogImage[] {
-  return array<RpcRow>(value).map((image) => ({ url: text(image.url), alt: text(image.alt), position: Number(image.position) || 0 }));
+  return array<RpcRow>(value)
+    .map((image) => ({ url: text(image.url), alt: text(image.alt), position: Number(image.position) || 0 }))
+    .sort((left, right) => left.position - right.position);
 }
 function variants(value: unknown): PublicCatalogVariant[] {
   return array<RpcRow>(value).map((variant) => ({ color: text(variant.color), size: text(variant.size), available: variant.available === true }));

@@ -1,6 +1,11 @@
 import type { CatalogBrand, CatalogCategory, Product, ProductInput, PublicationStatus } from "./types.ts";
 
-type DbImage = { id: string; image_url: string; position: number; alt_text: string };
+type DbImage = {
+  id: string; image_url: string; position: number; alt_text: string;
+  storage_bucket?: string | null; storage_path?: string | null; mime_type?: string | null;
+  width?: number | null; height?: number | null; file_size?: number | null;
+  status?: "pending" | "ready" | "delete_pending" | "failed";
+};
 type DbVariant = { id: string; variant_sku: string; color: string; size: string; stock: number; active: boolean };
 type DbProduct = {
   id: string; sku: string; name: string; description: string; category: string;
@@ -49,7 +54,12 @@ export function mapProduct(row: DbProduct): Product {
     })),
     images: (row.product_images ?? [])
       .sort((a, b) => a.position - b.position)
-      .map((image) => ({ id: image.id, imageUrl: image.image_url, position: image.position, altText: image.alt_text })),
+      .map((image) => ({
+        id: image.id, imageUrl: image.image_url, position: image.position, altText: image.alt_text,
+        storageBucket: image.storage_bucket ?? null, storagePath: image.storage_path ?? null,
+        mimeType: image.mime_type ?? null, width: image.width ?? null, height: image.height ?? null,
+        fileSize: image.file_size ?? null, status: image.status ?? "ready",
+      })),
   };
 }
 
@@ -69,7 +79,7 @@ export function toRpcPayload(input: ProductInput, id?: string) {
       id: variant.id, variant_sku: variant.variantSku.trim().toUpperCase(), color: variant.color.trim(),
       size: variant.size.trim(), stock: Number(variant.stock), active: variant.active,
     })),
-    p_images: input.images.map((image) => ({
+    p_images: input.images.filter((image) => !image.storagePath).map((image) => ({
       id: image.id, image_url: image.imageUrl.trim(), position: image.position, alt_text: image.altText.trim(),
     })),
   };

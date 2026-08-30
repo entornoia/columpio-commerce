@@ -7,7 +7,20 @@ export type Variant = {
   active: boolean;
 };
 
-export type ProductImage = { id: string; imageUrl: string; position: number; altText: string };
+export type ProductImageStatus = "pending" | "ready" | "delete_pending" | "failed";
+export type ProductImage = {
+  id: string;
+  imageUrl: string;
+  position: number;
+  altText: string;
+  storageBucket: string | null;
+  storagePath: string | null;
+  mimeType: string | null;
+  width: number | null;
+  height: number | null;
+  fileSize: number | null;
+  status: ProductImageStatus;
+};
 
 export type PublicationStatus = "draft" | "ready" | "published" | "archived";
 export type CatalogBrand = { id: string; code: string; name: string; slug: string; active: boolean };
