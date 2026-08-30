@@ -3,8 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseConfig, isSupabaseConfigured } from "./config";
 
 export async function updateSession(request: NextRequest) {
-  const publicPages = ["/privacy", "/terms", "/data-deletion", "/payment-result"];
-  if (publicPages.includes(request.nextUrl.pathname)) {
+  const publicPages = ["/", "/privacy", "/terms", "/data-deletion", "/payment-result"];
+  const isPublicStorefront = request.nextUrl.pathname.startsWith("/producto/")
+    || request.nextUrl.pathname.startsWith("/coleccion/");
+  if (publicPages.includes(request.nextUrl.pathname) || isPublicStorefront) {
     return NextResponse.next({ request });
   }
 
@@ -48,7 +50,7 @@ export async function updateSession(request: NextRequest) {
 
   if (data?.claims && isLogin) {
     const urlToDashboard = request.nextUrl.clone();
-    urlToDashboard.pathname = "/";
+    urlToDashboard.pathname = "/admin";
     return NextResponse.redirect(urlToDashboard);
   }
 

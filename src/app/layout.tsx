@@ -6,7 +6,7 @@ import "./globals.css";
 const sans = Manrope({ variable: "--font-sans", subsets: ["latin"] });
 const serif = Playfair_Display({ variable: "--font-serif", subsets: ["latin"] });
 
-export const metadata: Metadata = { title: "Columpio Commerce", description: "Administración de catálogo de Columpio Mujer" };
+export const metadata: Metadata = { title: { default: "Columpio Store", template: "%s | Columpio Store" }, description: "Moda femenina contemporánea de Columpio Mujer." };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return <html lang="es"><body className={`${sans.variable} ${serif.variable}`}><AppShell>{children}</AppShell></body></html>;
