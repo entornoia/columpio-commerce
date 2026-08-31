@@ -8,7 +8,9 @@ export async function updateSession(request: NextRequest) {
     || request.nextUrl.pathname.startsWith("/coleccion/")
     || request.nextUrl.pathname === "/carrito"
     || request.nextUrl.pathname === "/api/storefront/cart"
-    || request.nextUrl.pathname.startsWith("/api/storefront/cart/items/");
+    || request.nextUrl.pathname.startsWith("/api/storefront/cart/items/")
+    || request.nextUrl.pathname === "/api/storefront/cart/discount"
+    || request.nextUrl.pathname === "/api/storefront/shipping";
   if (publicPages.includes(request.nextUrl.pathname) || isPublicStorefront) {
     return NextResponse.next({ request });
   }

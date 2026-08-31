@@ -11,18 +11,27 @@ export type WebCartItem = {
   unitPrice: number;
   quantity: number;
   subtotal: number;
+  discountAmount: number;
+  total: number;
   available: boolean;
 };
+
+export type WebCartPromotion = { id: string; name: string; code: string | null };
 
 export type WebCart = {
   cartId: string | null;
   currency: "CLP";
   count: number;
+  listSubtotal: number;
+  discountAmount: number;
+  productsTotal: number;
   estimatedTotal: number;
+  promotion: WebCartPromotion | null;
+  discountCode: string | null;
   items: WebCartItem[];
 };
 
-export const EMPTY_WEB_CART: WebCart = { cartId: null, currency: "CLP", count: 0, estimatedTotal: 0, items: [] };
+export const EMPTY_WEB_CART: WebCart = { cartId: null, currency: "CLP", count: 0, listSubtotal: 0, discountAmount: 0, productsTotal: 0, estimatedTotal: 0, promotion: null, discountCode: null, items: [] };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function positiveQuantity(value: unknown) {
@@ -47,8 +56,18 @@ export function mapWebCart(value: unknown): WebCart {
       name: String(item.name ?? ""), slug: String(item.slug ?? ""), brandSlug: String(item.brandSlug ?? "mujer"),
       color: String(item.color ?? ""), size: String(item.size ?? ""), imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : null,
       unitPrice: Number(item.unitPrice) || 0, quantity: Number(item.quantity) || 0, subtotal: Number(item.subtotal) || 0,
+      discountAmount: Number(item.discountAmount) || 0, total: Number(item.total ?? item.subtotal) || 0,
       available: item.available === true,
     } satisfies WebCartItem;
   });
-  return { cartId: typeof row.cartId === "string" ? row.cartId : null, currency: "CLP", count: Number(row.count) || 0, estimatedTotal: Number(row.estimatedTotal) || 0, items };
+  const rawPromotion = row.promotion && typeof row.promotion === "object" ? row.promotion as Record<string, unknown> : null;
+  const listSubtotal = Number(row.listSubtotal ?? row.estimatedTotal) || 0;
+  const discountAmount = Number(row.discountAmount) || 0;
+  const productsTotal = Number(row.productsTotal ?? row.estimatedTotal) || 0;
+  return {
+    cartId: typeof row.cartId === "string" ? row.cartId : null, currency: "CLP", count: Number(row.count) || 0,
+    listSubtotal, discountAmount, productsTotal, estimatedTotal: Number(row.estimatedTotal ?? productsTotal) || 0,
+    promotion: rawPromotion ? { id: String(rawPromotion.id ?? ""), name: String(rawPromotion.name ?? ""), code: typeof rawPromotion.code === "string" ? rawPromotion.code : null } : null,
+    discountCode: typeof row.discountCode === "string" ? row.discountCode : null, items,
+  };
 }
