@@ -5,7 +5,10 @@ import { getSupabaseConfig, isSupabaseConfigured } from "./config";
 export async function updateSession(request: NextRequest) {
   const publicPages = ["/", "/privacy", "/terms", "/data-deletion", "/payment-result"];
   const isPublicStorefront = request.nextUrl.pathname.startsWith("/producto/")
-    || request.nextUrl.pathname.startsWith("/coleccion/");
+    || request.nextUrl.pathname.startsWith("/coleccion/")
+    || request.nextUrl.pathname === "/carrito"
+    || request.nextUrl.pathname === "/api/storefront/cart"
+    || request.nextUrl.pathname.startsWith("/api/storefront/cart/items/");
   if (publicPages.includes(request.nextUrl.pathname) || isPublicStorefront) {
     return NextResponse.next({ request });
   }

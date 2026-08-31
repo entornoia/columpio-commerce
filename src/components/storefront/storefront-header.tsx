@@ -6,9 +6,11 @@ import { useEffect, useRef } from "react";
 import type { PublicCatalogCategory } from "@/lib/storefront/catalog-types";
 import { collectionPath } from "@/lib/storefront/urls";
 import { StoreIcon } from "./storefront-icons";
+import { useCart } from "./cart-provider";
 
 export function StorefrontHeader({ categories }: { categories: PublicCatalogCategory[] }) {
   const pathname = usePathname();
+  const { cart, openDrawer } = useCart();
   const mobileMenu = useRef<HTMLDetailsElement>(null);
   const closeMobileMenu = () => { if (mobileMenu.current) mobileMenu.current.open = false; };
 
@@ -26,7 +28,7 @@ export function StorefrontHeader({ categories }: { categories: PublicCatalogCate
         <nav className="store-desktop-nav" aria-label="Navegación principal">
           <Link href="/">Inicio</Link>{categories.slice(0, 5).map((item) => <Link key={item.slug} href={collectionPath(item.slug)}>{item.name}</Link>)}
         </nav>
-        <div className="store-header-actions"><button className="store-icon-button" aria-label="Buscar"><StoreIcon name="search"/></button><button className="store-icon-button store-bag" aria-label="Carrito, próximamente"><StoreIcon name="bag"/><span>0</span></button></div>
+        <div className="store-header-actions"><button className="store-icon-button" aria-label="Buscar"><StoreIcon name="search"/></button><button className="store-icon-button store-bag" aria-label={`Abrir carrito, ${cart.count} productos`} onClick={openDrawer}><StoreIcon name="bag"/><span>{cart.count}</span></button></div>
       </div>
     </header>
   </>;

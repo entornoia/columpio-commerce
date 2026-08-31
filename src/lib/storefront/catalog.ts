@@ -14,7 +14,7 @@ function images(value: unknown): PublicCatalogImage[] {
     .sort((left, right) => left.position - right.position);
 }
 function variants(value: unknown): PublicCatalogVariant[] {
-  return array<RpcRow>(value).map((variant) => ({ color: text(variant.color), size: text(variant.size), available: variant.available === true }));
+  return array<RpcRow>(value).map((variant) => ({ id: text(variant.id), color: text(variant.color), size: text(variant.size), available: variant.available === true }));
 }
 
 function mapProduct(row: RpcRow): PublicCatalogProduct {

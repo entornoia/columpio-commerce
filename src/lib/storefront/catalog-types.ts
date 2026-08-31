@@ -1,5 +1,5 @@
 export type PublicCatalogImage = { url: string; alt: string; position: number };
-export type PublicCatalogVariant = { color: string; size: string; available: boolean };
+export type PublicCatalogVariant = { id: string; color: string; size: string; available: boolean };
 
 export type PublicCatalogProduct = {
   id: string;
