@@ -18,6 +18,13 @@ export type FlowPaymentStatus = {
   currency: string; amount: number; payer: string;
 };
 
+type ExpectedFlowPayment = {
+  flowOrder: number;
+  commerceOrder: string;
+  currency: string;
+  amount: number;
+};
+
 export type FlowGateway = {
   createPayment(payload: FlowCreatePaymentPayload): Promise<FlowCheckout>;
   getStatus(token: string): Promise<FlowPaymentStatus>;
@@ -48,8 +55,19 @@ function operationalConfig(): FlowConfig {
   if (configuredApiBaseUrl !== expectedApiBaseUrl) throw new Error(`FLOW_API_BASE_URL no corresponde al ambiente ${environment}.`);
   if (!configuredAppBaseUrl) throw new Error("Falta configurar APP_BASE_URL.");
   const appBaseUrl = new URL(configuredAppBaseUrl);
-  if (appBaseUrl.protocol !== "https:" || appBaseUrl.username || appBaseUrl.password || appBaseUrl.pathname !== "/" || appBaseUrl.search || appBaseUrl.hash) {
-    throw new Error("APP_BASE_URL debe ser un origen HTTPS sin credenciales, query ni fragmento.");
+  const hostname = appBaseUrl.hostname.toLowerCase();
+  const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)?.slice(1).map(Number);
+  const privateIpv4 = Boolean(ipv4 && (
+    ipv4.some((part) => part > 255)
+    || ipv4[0] === 0 || ipv4[0] === 10 || ipv4[0] === 127
+    || (ipv4[0] === 169 && ipv4[1] === 254)
+    || (ipv4[0] === 172 && ipv4[1] >= 16 && ipv4[1] <= 31)
+    || (ipv4[0] === 192 && ipv4[1] === 168)
+  ));
+  const privateIpv6 = /^\[(?:::1|f[cd][0-9a-f]{0,2}:|fe[89ab][0-9a-f]?:)/.test(hostname);
+  const localHostname = hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") || privateIpv4 || privateIpv6;
+  if (appBaseUrl.protocol !== "https:" || appBaseUrl.username || appBaseUrl.password || appBaseUrl.pathname !== "/" || appBaseUrl.search || appBaseUrl.hash || localHostname) {
+    throw new Error("APP_BASE_URL debe ser un origen HTTPS público, sin credenciales, query ni fragmento.");
   }
   return { apiKey, secretKey, apiBaseUrl: expectedApiBaseUrl, appBaseUrl: appBaseUrl.origin };
 }
@@ -64,22 +82,41 @@ export function signFlowParameters(parameters: Record<string, string | number>, 
 export function flowCallbackUrls() {
   const { appBaseUrl } = operationalConfig();
   return {
-    urlConfirmation: `${appBaseUrl}/api/payments/flow/confirmation`,
-    urlReturn: `${appBaseUrl}/api/payments/flow/return`,
+    urlConfirmation: new URL("/api/payments/flow/confirmation", appBaseUrl).toString(),
+    urlReturn: new URL("/api/payments/flow/return", appBaseUrl).toString(),
   };
 }
 
-function parseStatus(value: unknown): FlowPaymentStatus {
+function strictNonNegativeInteger(value: unknown, field: string) {
+  const normalized = typeof value === "number"
+    ? value
+    : typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value) ? Number(value) : Number.NaN;
+  if (!Number.isSafeInteger(normalized) || normalized < 0) {
+    throw new FlowRequestError(`Campo numérico Flow inválido: ${field}.`, "invalid_status_response", true);
+  }
+  return normalized;
+}
+
+export function parseFlowPaymentStatus(value: unknown): FlowPaymentStatus {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new FlowRequestError("Respuesta de estado Flow inválida.", "invalid_status_response", true);
   const row = value as Record<string, unknown>;
-  if (!Number.isSafeInteger(row.flowOrder) || (row.flowOrder as number) < 1
-    || typeof row.commerceOrder !== "string" || !row.commerceOrder
-    || ![1, 2, 3, 4].includes(row.status as number)
-    || typeof row.currency !== "string" || typeof row.amount !== "number"
+  const flowOrder = strictNonNegativeInteger(row.flowOrder, "flowOrder");
+  const status = strictNonNegativeInteger(row.status, "status");
+  const amount = strictNonNegativeInteger(row.amount, "amount");
+  if (flowOrder < 1 || typeof row.commerceOrder !== "string" || !row.commerceOrder
+    || ![1, 2, 3, 4].includes(status)
+    || typeof row.currency !== "string" || !row.currency
     || typeof row.payer !== "string") {
     throw new FlowRequestError("Respuesta de estado Flow incompleta.", "invalid_status_response", true);
   }
-  return row as unknown as FlowPaymentStatus;
+  return { flowOrder, commerceOrder: row.commerceOrder, status: status as FlowPaymentStatus["status"], currency: row.currency, amount, payer: row.payer };
+}
+
+export function assertFlowPaymentStatusMatches(status: FlowPaymentStatus, expected: ExpectedFlowPayment) {
+  if (status.commerceOrder !== expected.commerceOrder || status.flowOrder !== expected.flowOrder
+    || status.amount !== expected.amount || status.currency !== expected.currency) {
+    throw new Error("Flow payment verification mismatch");
+  }
 }
 
 function parseCheckout(value: unknown): FlowCheckout {
@@ -141,11 +178,11 @@ export function createFlowGateway(): FlowGateway {
     },
     async getStatus(token) {
       if (!token) throw new FlowRequestError("Token Flow inválido.", "invalid_token", false);
-      return parseStatus(await flowRequest("/payment/getStatus", "GET", { apiKey: config.apiKey, token }, config));
+      return parseFlowPaymentStatus(await flowRequest("/payment/getStatus", "GET", { apiKey: config.apiKey, token }, config));
     },
     async findByCommerceOrder(commerceOrder) {
       try {
-        return parseStatus(await flowRequest("/payment/getStatusByCommerceId", "GET", { apiKey: config.apiKey, commerceId: commerceOrder }, config));
+        return parseFlowPaymentStatus(await flowRequest("/payment/getStatusByCommerceId", "GET", { apiKey: config.apiKey, commerceId: commerceOrder }, config));
       } catch (error) {
         if (error instanceof FlowRequestError && !error.uncertain && error.httpStatus === 400) return null;
         throw error;

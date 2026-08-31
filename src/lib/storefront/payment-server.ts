@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { createFlowGateway, flowCallbackUrls, FlowRequestError, assertFlowPaymentUrl, type FlowGateway, type FlowPaymentStatus } from "@/lib/payments/flow";
+import { assertFlowPaymentStatusMatches, createFlowGateway, flowCallbackUrls, FlowRequestError, assertFlowPaymentUrl, type FlowGateway, type FlowPaymentStatus } from "@/lib/payments/flow";
 import { createServiceClient } from "@/lib/supabase/service";
 import { hashCartToken } from "./cart-server";
 import type { WebPaymentResult } from "./payment-contract";
@@ -40,7 +40,7 @@ export async function confirmWebFlowToken(token:string,dependencies:Dependencies
   if(contextResult.error)throw new Error("No pudimos identificar el pago.");
   if(!contextResult.data)return{handled:false};
   const context=row(contextResult.data),status=await gateway.getStatus(token);
-  if(status.commerceOrder!==context.commerceOrder||status.flowOrder!==Number(context.providerOrderId??status.flowOrder)||status.amount!==Number(context.amount)||status.currency!==context.currency)throw new Error("Flow payment verification mismatch");
+  assertFlowPaymentStatusMatches(status,{commerceOrder:String(context.commerceOrder),flowOrder:Number(context.providerOrderId),amount:Number(context.amount),currency:String(context.currency)});
   const payloadHash=createHash("sha256").update(canonicalStatus(status)).digest("hex");
   const processed=await db.rpc("process_web_flow_event",{p_flow_token:token,p_provider_order_id:status.flowOrder,p_commerce_order:status.commerceOrder,p_provider_status:status.status,p_currency:status.currency,p_amount:status.amount,p_payload_hash:payloadHash});
   if(processed.error)throw new Error("No pudimos procesar la confirmación del pago.");

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { executeCommerceTool } from "../src/lib/commerce/tools.ts";
 import { formatCommerceResponse } from "../src/lib/commerce/response-formatter.ts";
-import { createFlowGateway, flowCallbackUrls, FlowRequestError, signFlowParameters } from "../src/lib/payments/flow.ts";
+import { assertFlowPaymentStatusMatches, createFlowGateway, flowCallbackUrls, FlowRequestError, parseFlowPaymentStatus, signFlowParameters } from "../src/lib/payments/flow.ts";
 
 process.env.FLOW_API_KEY = "TEST_FLOW_API_KEY_NOT_REAL";
 process.env.FLOW_SECRET_KEY = "TEST_FLOW_SECRET_NOT_REAL";
@@ -81,14 +81,42 @@ test("email válido crea checkout y payload exacto desde el pedido", async () =>
   assert.equal(item.quantity, 2); assert.equal(f.state.gatewayCreates, 1);
 });
 
-test("APP_BASE_URL construye callbacks locales y Vercel sin hardcode interno", () => {
+test("APP_BASE_URL construye callbacks públicos con URL y normaliza trailing slash", () => {
   const previous = process.env.APP_BASE_URL;
   try {
     process.env.APP_BASE_URL = "https://badge-outpost-chaplain.ngrok-free.dev";
     assert.deepEqual(flowCallbackUrls(), { urlConfirmation: "https://badge-outpost-chaplain.ngrok-free.dev/api/payments/flow/confirmation", urlReturn: "https://badge-outpost-chaplain.ngrok-free.dev/api/payments/flow/return" });
     process.env.APP_BASE_URL = "https://columpio-commerce.vercel.app";
     assert.deepEqual(flowCallbackUrls(), { urlConfirmation: "https://columpio-commerce.vercel.app/api/payments/flow/confirmation", urlReturn: "https://columpio-commerce.vercel.app/api/payments/flow/return" });
+    process.env.APP_BASE_URL = "https://columpiostore.cl/";
+    assert.deepEqual(flowCallbackUrls(), { urlConfirmation: "https://columpiostore.cl/api/payments/flow/confirmation", urlReturn: "https://columpiostore.cl/api/payments/flow/return" });
   } finally { process.env.APP_BASE_URL = previous; }
+});
+
+test("APP_BASE_URL rechaza HTTP, localhost, loopback y redes privadas", () => {
+  const previous = process.env.APP_BASE_URL;
+  try {
+    for (const value of ["http://columpiostore.cl", "https://localhost:3000", "https://127.0.0.1", "https://127.10.20.30", "https://10.0.0.2", "https://172.16.0.2", "https://192.168.1.2", "https://[::1]", "https://[fd00::1]", "https://store.local"]) {
+      process.env.APP_BASE_URL = value;
+      assert.throws(() => flowCallbackUrls(), /HTTPS público/);
+    }
+  } finally { process.env.APP_BASE_URL = previous; }
+});
+
+test("estado Flow normaliza enteros numéricos y strings estrictos", () => {
+  const base = { flowOrder: 10047067, commerceOrder: "COL-20260831-000006", status: 2, currency: "CLP", amount: 54990, payer: "cliente@example.com" };
+  assert.equal(parseFlowPaymentStatus(base).amount, 54990);
+  assert.deepEqual(parseFlowPaymentStatus({ ...base, flowOrder: "10047067", status: "2", amount: "54990" }), base);
+  for (const amount of ["54990.5", "", "texto", "54990abc", -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.throws(() => parseFlowPaymentStatus({ ...base, amount }), /numérico Flow inválido/);
+  }
+});
+
+test("verificación del callback compara monto normalizado exactamente", () => {
+  const status = parseFlowPaymentStatus({ flowOrder: "10047067", commerceOrder: "COL-20260831-000006", status: "2", currency: "CLP", amount: "54990", payer: "cliente@example.com" });
+  const expected = { flowOrder: 10047067, commerceOrder: "COL-20260831-000006", currency: "CLP", amount: 54990 };
+  assert.doesNotThrow(() => assertFlowPaymentStatusMatches(status, expected));
+  assert.throws(() => assertFlowPaymentStatusMatches(status, { ...expected, amount: 54991 }), /verification mismatch/);
 });
 
 test("ambiente, base URL, API key y secret faltantes fallan de forma cerrada", async () => {
