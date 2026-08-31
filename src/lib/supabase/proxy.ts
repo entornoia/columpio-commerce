@@ -12,7 +12,9 @@ export async function updateSession(request: NextRequest) {
     || request.nextUrl.pathname.startsWith("/api/storefront/cart/items/")
     || request.nextUrl.pathname === "/api/storefront/cart/discount"
     || request.nextUrl.pathname === "/api/storefront/shipping"
-    || request.nextUrl.pathname === "/api/storefront/checkout";
+    || request.nextUrl.pathname === "/api/storefront/checkout"
+    || request.nextUrl.pathname === "/api/storefront/payment/flow"
+    || request.nextUrl.pathname === "/api/storefront/payment/status";
   if (publicPages.includes(request.nextUrl.pathname) || isPublicStorefront) {
     return NextResponse.next({ request });
   }

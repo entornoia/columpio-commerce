@@ -11,5 +11,6 @@ export async function POST(request: Request) {
   if (typeof token !== "string" || !/^[A-Za-z0-9_-]+$/.test(token)) {
     return Response.json({ error: "Token inválido." }, { status: 400 });
   }
-  return NextResponse.redirect(new URL("/payment-result?provider=flow", request.url), 303);
+  // El retorno del navegador es informativo; no muta pedido, pago ni stock.
+  return NextResponse.redirect(new URL("/payment-result", request.url), 303);
 }

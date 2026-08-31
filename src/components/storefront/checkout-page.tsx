@@ -5,13 +5,12 @@ import { FormEvent, useEffect, useState } from "react";
 import { useCart } from "./cart-provider";
 
 const money = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
-type Result = { orderId: string; orderNumber: string; status: string; total: number; reservationExpiresAt: string };
 
 export function CheckoutPage() {
   const { cart, loading } = useCart();
   const [regions, setRegions] = useState<{code:string;name:string}[]>([]); const [deliveryType, setDeliveryType] = useState<"pickup"|"shipping">("pickup");
   const [regionCode, setRegionCode] = useState(""); const [commune, setCommune] = useState(""); const [shipping, setShipping] = useState(0);
-  const [submitting, setSubmitting] = useState(false); const [error, setError] = useState(""); const [result, setResult] = useState<Result|null>(null);
+  const [submitting, setSubmitting] = useState(false); const [error, setError] = useState("");
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   useEffect(() => { fetch("/api/storefront/shipping").then((r) => r.json()).then((data) => setRegions(data.regions ?? [])).catch(() => setError("No pudimos cargar las regiones.")); }, []);
   useEffect(() => {
@@ -19,12 +18,11 @@ export function CheckoutPage() {
     const controller = new AbortController(); fetch("/api/storefront/shipping", { method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({method:deliveryType === "pickup"?"pickup":"shipping",regionCode:regionCode||null,commune:commune||null}),signal:controller.signal })
       .then(async(r)=>{const data=await r.json();if(!r.ok)throw new Error(data.error);setShipping(Number(data.amount)||0);}).catch((cause)=>{if(cause.name!=="AbortError")setError(cause.message);}); return()=>controller.abort();
   },[deliveryType,regionCode,commune]);
-  if (result) return <section className="store-checkout-page"><div className="store-checkout-success"><p className="store-kicker">CHECKOUT CREADO</p><h2>Pedido creado — pago aún no habilitado</h2><strong>{result.orderNumber}</strong><p>Total: {money.format(result.total)}</p><p>Reserva válida hasta {new Intl.DateTimeFormat("es-CL",{dateStyle:"short",timeStyle:"short"}).format(new Date(result.reservationExpiresAt))}.</p><Link href="/">Volver a la tienda</Link></div></section>;
   if (!loading && cart.items.length === 0) return <section className="store-checkout-page"><h1>Checkout</h1><p>Tu carrito está vacío o ya inició checkout.</p><Link href="/">Volver a la tienda</Link></section>;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setSubmitting(true); setError(""); const form = new FormData(event.currentTarget);
     const payload = { idempotencyKey, customer:{firstName:form.get("firstName"),lastName:form.get("lastName"),email:form.get("email"),phone:form.get("phone")},deliveryType,address:deliveryType==="shipping"?{regionCode,commune,street:form.get("street"),number:form.get("number"),complement:form.get("complement"),instructions:form.get("instructions")}:undefined,discountCode:cart.discountCode };
-    try { const response=await fetch("/api/storefront/checkout",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const data=await response.json();if(!response.ok)throw new Error(data.error);setResult(data); }
+    try { const response=await fetch("/api/storefront/checkout",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const order=await response.json();if(!response.ok)throw new Error(order.error);const paymentResponse=await fetch("/api/storefront/payment/flow",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({orderId:order.orderId,idempotencyKey})});const payment=await paymentResponse.json();if(!paymentResponse.ok)throw new Error(payment.error);if(!payment.paymentUrl)throw new Error("El pago está siendo preparado. Intenta nuevamente en unos segundos.");window.location.assign(payment.paymentUrl); }
     catch(cause){setError(cause instanceof Error?cause.message:"No pudimos crear el pedido.");}finally{setSubmitting(false);}
   }
   return <section className="store-checkout-page"><p className="store-kicker">COMPRA SEGURA</p><h1>Checkout</h1><div className="store-checkout-grid"><form className="store-checkout-form" onSubmit={submit}>

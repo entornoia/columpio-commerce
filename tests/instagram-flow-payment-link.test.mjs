@@ -195,13 +195,13 @@ test("kill switch y handoff impiden claim; stock y pedido no cambian", async () 
   await executeCommerceTool(f.context, "create_payment_link", { payerEmail: "clienta@example.com" }); assert.deepEqual({ stock: f.state.stock, orderStatus: f.state.orderStatus }, before);
 });
 
-test("callbacks son públicos, form-urlencoded e informativos sin marcar paid", async () => {
+test("callbacks siguen públicos y el flujo web no muta commerce legacy", async () => {
   const proxy = await readFile(new URL("../src/lib/supabase/proxy.ts", import.meta.url), "utf8");
   const confirmation = await readFile(new URL("../src/app/api/payments/flow/confirmation/route.ts", import.meta.url), "utf8");
   const returnRoute = await readFile(new URL("../src/app/api/payments/flow/return/route.ts", import.meta.url), "utf8");
   const page = await readFile(new URL("../src/app/payment-result/page.tsx", import.meta.url), "utf8");
   assert.match(proxy, /api\/payments\/flow\/confirmation/); assert.match(proxy, /api\/payments\/flow\/return/);
-  assert.match(confirmation, /application\/x-www-form-urlencoded/); assert.match(confirmation, /new Response\("OK"/);
-  assert.match(returnRoute, /303/); assert.match(returnRoute, /payment-result\?provider=flow/);
-  for (const source of [confirmation, returnRoute, page]) assert.doesNotMatch(source, /commerce_orders|paid_at|status:\s*"paid"|\.update\(/i);
+  assert.match(confirmation, /application\/x-www-form-urlencoded/); assert.match(confirmation, /confirmWebFlowToken/); assert.match(confirmation, /new Response\("OK"/);
+  assert.match(returnRoute, /303/); assert.match(returnRoute, /payment-result/);
+  for (const source of [confirmation, returnRoute, page]) assert.doesNotMatch(source, /commerce_orders|commerce_flow_checkouts|instagram_conversations/i);
 });

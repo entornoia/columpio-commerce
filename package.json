@@ -9,7 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:instagram": "node --conditions=react-server --experimental-strip-types --test tests/instagram-channel.test.mjs tests/instagram-handoff.test.mjs tests/instagram-profile.test.mjs tests/instagram-commerce.test.mjs tests/instagram-commerce-voice.test.mjs tests/instagram-flow-payment-link.test.mjs tests/instagram-intent-router.test.mjs tests/instagram-handoff-cases.test.mjs tests/instagram-conversation-state.test.mjs tests/instagram-semantic-commerce.test.mjs tests/instagram-advisor-mode.test.mjs tests/admin-auth.test.mjs",
-    "test:all": "pnpm test:instagram && node --conditions=react-server --experimental-strip-types --test tests/public-catalog.test.mjs tests/product-image-storage.test.mjs tests/product-photo-intake.test.mjs tests/web-cart.test.mjs tests/web-stock-availability.test.mjs tests/web-promotions-shipping.test.mjs tests/web-checkout-orders.test.mjs"
+    "test:all": "pnpm test:instagram && node --conditions=react-server --experimental-strip-types --test tests/public-catalog.test.mjs tests/product-image-storage.test.mjs tests/product-photo-intake.test.mjs tests/web-cart.test.mjs tests/web-stock-availability.test.mjs tests/web-promotions-shipping.test.mjs tests/web-checkout-orders.test.mjs tests/web-flow-payments.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

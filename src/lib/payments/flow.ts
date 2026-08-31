@@ -90,11 +90,17 @@ function parseCheckout(value: unknown): FlowCheckout {
     || typeof row.token !== "string" || !/^[A-Za-z0-9_-]+$/.test(row.token)) {
     throw new FlowRequestError("Respuesta Flow incompleta.", "invalid_response", true);
   }
-  const url = new URL(row.url);
-  if (url.protocol !== "https:" || !(url.hostname === "flow.cl" || url.hostname.endsWith(".flow.cl")) || url.search || url.hash) {
+  assertFlowPaymentUrl(row.url);
+  return { flowOrder: row.flowOrder as number, token: row.token, paymentUrl: `${row.url}?token=${row.token}` };
+}
+
+export function assertFlowPaymentUrl(value: unknown) {
+  if (typeof value !== "string" || !value) throw new FlowRequestError("URL Flow inválida.", "invalid_url", false);
+  const url = new URL(value);
+  if (url.protocol !== "https:" || !(url.hostname === "flow.cl" || url.hostname.endsWith(".flow.cl")) || url.username || url.password || url.hash) {
     throw new FlowRequestError("Flow devolvió una URL de pago inválida.", "invalid_url", true);
   }
-  return { flowOrder: row.flowOrder as number, token: row.token, paymentUrl: `${row.url}?token=${row.token}` };
+  return url;
 }
 
 async function flowRequest(path: string, method: "GET" | "POST", parameters: Record<string, string | number>, config: FlowConfig) {
