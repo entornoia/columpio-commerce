@@ -90,5 +90,16 @@ export async function searchCatalog(
 
   if (error) throw new Error(`No se pudo buscar en el catálogo: ${error.message}`);
   const products = (data ?? []).map((row) => mapProduct(row as never));
+  const variantIds = products.flatMap((product) => product.variants.map((variant) => variant.id));
+  if (variantIds.length) {
+    const { data: availabilityRows, error: availabilityError } = await supabase.rpc("get_catalog_variant_availability", { p_variant_ids: variantIds });
+    if (availabilityError) throw new Error(`No se pudo calcular la disponibilidad del catálogo: ${availabilityError.message}`);
+    const availability = new Map<string, number>(((availabilityRows ?? []) as Array<{ variant_id: string; available_stock: number }>).map((row) => [row.variant_id, Number(row.available_stock)]));
+    for (const product of products) for (const variant of product.variants) {
+      const availableStock = availability.get(variant.id);
+      if (typeof availableStock !== "number" || !Number.isInteger(availableStock) || availableStock < 0) throw new Error("La disponibilidad calculada del catálogo es inconsistente.");
+      variant.stock = availableStock;
+    }
+  }
   return filterCatalogProducts(products, filters);
 }
