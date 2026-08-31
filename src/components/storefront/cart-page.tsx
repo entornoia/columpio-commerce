@@ -53,7 +53,7 @@ export function CartPage() {
           <div className="store-cart-shipping"><b>Entrega</b><label><input type="radio" checked={method === "pickup"} onChange={() => setMethod("pickup")}/> Retiro</label><label><input type="radio" checked={method === "shipping"} onChange={() => setMethod("shipping")}/> Despacho</label>{method === "shipping" && <><select value={region} onChange={(event) => setRegion(event.target.value)}><option value="">Selecciona región</option>{regions.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}</select><input value={commune} onChange={(event) => setCommune(event.target.value)} maxLength={80} placeholder="Comuna (opcional)"/></>}</div>
           {shippingError && <small className="store-cart-error">{shippingError}</small>}
           <p><span>Subtotal lista</span><strong>{money.format(cart.listSubtotal)}</strong></p>{cart.discountAmount > 0 && <p><span>{cart.promotion?.name ?? "Descuento"}</span><strong>−{money.format(cart.discountAmount)}</strong></p>}<p><span>Total productos</span><strong>{money.format(cart.productsTotal)}</strong></p><p><span>Despacho</span><strong>{resolvedShipping ? money.format(resolvedShipping.amount) : "Por calcular"}</strong></p><p><span>Total estimado</span><strong>{money.format(estimate)}</strong></p>
-          <small>Estimación vigente; se recalculará al iniciar checkout.</small><button disabled>Continuar al checkout</button>
+          <small>Estimación vigente; se recalculará al iniciar checkout.</small><Link className="store-checkout-link" href="/checkout">Continuar al checkout</Link>
         </aside>}</div>}
   </section>;
 }

@@ -1,0 +1,8 @@
+import "server-only";
+import {createHash} from "node:crypto";
+import {createServiceClient} from "@/lib/supabase/service";
+import {hashCartToken} from "./cart-server";
+import type {CheckoutInput,CheckoutResult} from "./checkout-contract";
+const attempts=new Map<string,{count:number;resetAt:number}>();
+function rateLimit(token:string){const key=createHash("sha256").update(token).digest("hex"),now=Date.now(),current=attempts.get(key);if(!current||current.resetAt<=now){attempts.set(key,{count:1,resetAt:now+10*60_000});return;}if(current.count>=5)throw new Error("Demasiados intentos de checkout. Intenta nuevamente en unos minutos.");current.count+=1;}
+export async function createCheckout(token:string|undefined,input:CheckoutInput):Promise<CheckoutResult>{if(!token)throw new Error("No encontramos tu carrito.");rateLimit(token);const{data,error}=await createServiceClient().rpc("create_web_checkout",{p_token_hash:hashCartToken(token),p_idempotency_key:input.idempotencyKey,p_customer:input.customer,p_delivery:{deliveryType:input.deliveryType,...(input.address??{})},p_discount_code:input.discountCode??null});if(error){if(/stock|unavailable/i.test(error.message))throw new Error("Una prenda ya no tiene disponibilidad suficiente.");if(/cart is empty|cart not found|open cart/i.test(error.message))throw new Error("El carrito está vacío o ya inició checkout.");throw new Error("No pudimos crear el pedido. Revisa tus datos e intenta nuevamente.");}const row=data as Record<string,unknown>;return{orderId:String(row.orderId),orderNumber:String(row.orderNumber),status:String(row.status),total:Number(row.total),reservationExpiresAt:String(row.reservationExpiresAt)};}

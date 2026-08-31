@@ -7,10 +7,12 @@ export async function updateSession(request: NextRequest) {
   const isPublicStorefront = request.nextUrl.pathname.startsWith("/producto/")
     || request.nextUrl.pathname.startsWith("/coleccion/")
     || request.nextUrl.pathname === "/carrito"
+    || request.nextUrl.pathname === "/checkout"
     || request.nextUrl.pathname === "/api/storefront/cart"
     || request.nextUrl.pathname.startsWith("/api/storefront/cart/items/")
     || request.nextUrl.pathname === "/api/storefront/cart/discount"
-    || request.nextUrl.pathname === "/api/storefront/shipping";
+    || request.nextUrl.pathname === "/api/storefront/shipping"
+    || request.nextUrl.pathname === "/api/storefront/checkout";
   if (publicPages.includes(request.nextUrl.pathname) || isPublicStorefront) {
     return NextResponse.next({ request });
   }
