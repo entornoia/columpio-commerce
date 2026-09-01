@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { requirePublicAppOrigin } from "../public-origin.ts";
 
 export type FlowCreatePaymentPayload = {
   commerceOrder: string;
@@ -47,29 +48,12 @@ function operationalConfig(): FlowConfig {
   const secretKey = process.env.FLOW_SECRET_KEY?.trim();
   const environment = process.env.FLOW_ENVIRONMENT?.trim();
   const configuredApiBaseUrl = process.env.FLOW_API_BASE_URL?.trim();
-  const configuredAppBaseUrl = process.env.APP_BASE_URL?.trim();
   if (!apiKey) throw new Error("Falta configurar FLOW_API_KEY.");
   if (!secretKey) throw new Error("Falta configurar FLOW_SECRET_KEY.");
   if (environment !== "sandbox" && environment !== "production") throw new Error("FLOW_ENVIRONMENT debe ser sandbox o production.");
   const expectedApiBaseUrl = environment === "sandbox" ? "https://sandbox.flow.cl/api" : "https://www.flow.cl/api";
   if (configuredApiBaseUrl !== expectedApiBaseUrl) throw new Error(`FLOW_API_BASE_URL no corresponde al ambiente ${environment}.`);
-  if (!configuredAppBaseUrl) throw new Error("Falta configurar APP_BASE_URL.");
-  const appBaseUrl = new URL(configuredAppBaseUrl);
-  const hostname = appBaseUrl.hostname.toLowerCase();
-  const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)?.slice(1).map(Number);
-  const privateIpv4 = Boolean(ipv4 && (
-    ipv4.some((part) => part > 255)
-    || ipv4[0] === 0 || ipv4[0] === 10 || ipv4[0] === 127
-    || (ipv4[0] === 169 && ipv4[1] === 254)
-    || (ipv4[0] === 172 && ipv4[1] >= 16 && ipv4[1] <= 31)
-    || (ipv4[0] === 192 && ipv4[1] === 168)
-  ));
-  const privateIpv6 = /^\[(?:::1|f[cd][0-9a-f]{0,2}:|fe[89ab][0-9a-f]?:)/.test(hostname);
-  const localHostname = hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") || privateIpv4 || privateIpv6;
-  if (appBaseUrl.protocol !== "https:" || appBaseUrl.username || appBaseUrl.password || appBaseUrl.pathname !== "/" || appBaseUrl.search || appBaseUrl.hash || localHostname) {
-    throw new Error("APP_BASE_URL debe ser un origen HTTPS público, sin credenciales, query ni fragmento.");
-  }
-  return { apiKey, secretKey, apiBaseUrl: expectedApiBaseUrl, appBaseUrl: appBaseUrl.origin };
+  return { apiKey, secretKey, apiBaseUrl: expectedApiBaseUrl, appBaseUrl: requirePublicAppOrigin() };
 }
 
 export function assertFlowOperationalConfig() { operationalConfig(); }

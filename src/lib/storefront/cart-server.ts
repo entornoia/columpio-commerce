@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
+import { assertTrustedRequestOrigin, usesSecurePublicCookies } from "@/lib/public-origin";
 import { createServiceClient } from "@/lib/supabase/service";
 import { EMPTY_WEB_CART, mapWebCart, type WebCart } from "./cart-contract";
 
@@ -8,7 +9,7 @@ export const CART_COOKIE = "columpio_cart";
 export const CART_COOKIE_OPTIONS = {
   httpOnly: true,
   sameSite: "lax" as const,
-  secure: process.env.NODE_ENV === "production",
+  secure: usesSecurePublicCookies(),
   path: "/",
   maxAge: 60 * 60 * 24 * 30,
 };
@@ -17,9 +18,7 @@ export function newCartToken() { return randomBytes(32).toString("base64url"); }
 export function hashCartToken(token: string) { return createHash("sha256").update(token, "utf8").digest("hex"); }
 
 export function assertSameOrigin(request: Request) {
-  const origin = request.headers.get("origin");
-  const expected = new URL(request.url).origin;
-  if (!origin || origin !== expected) throw new Error("Origen no permitido.");
+  assertTrustedRequestOrigin(request);
 }
 
 export async function readCart(token?: string): Promise<WebCart> {

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { EMPTY_WEB_CART, mapWebCart, positiveQuantity, uuid } from "../src/lib/storefront/cart-contract.ts";
+import { assertTrustedRequestOrigin, publicAppOrigin, usesSecurePublicCookies } from "../src/lib/public-origin.ts";
 
 const migrationUrl = new URL("../supabase/migrations/20260831015647_web_guest_cart.sql", import.meta.url);
 const read = (path) => readFile(new URL(path, import.meta.url), "utf8");
@@ -53,10 +54,44 @@ test("la sesión se crea solo al primer add mutante", async () => {
   assert.match(provider, /cartRequest\("\/api\/storefront\/cart"\)/);
 });
 
-test("cookie es HttpOnly, SameSite Lax, segura en producción y de alta entropía", async () => {
+test("cookie es HttpOnly, SameSite Lax, segura con origen público y de alta entropía", async () => {
   const server = await read("../src/lib/storefront/cart-server.ts");
   assert.match(server, /randomBytes\(32\)/); assert.match(server, /createHash\("sha256"\)/);
-  assert.match(server, /httpOnly: true/); assert.match(server, /sameSite: "lax"/); assert.match(server, /secure: process\.env\.NODE_ENV === "production"/); assert.match(server, /path: "\/"/);
+  assert.match(server, /httpOnly: true/); assert.match(server, /sameSite: "lax"/); assert.match(server, /secure: usesSecurePublicCookies\(\)/); assert.match(server, /path: "\/"/);
+  assert.equal(usesSecurePublicCookies("development", "https://badge-outpost-chaplain.ngrok-free.dev"), true);
+  assert.equal(usesSecurePublicCookies("development", undefined), false);
+  assert.equal(usesSecurePublicCookies("production", undefined), true);
+});
+
+test("APP_BASE_URL público se valida una vez y normaliza el origen", () => {
+  assert.equal(publicAppOrigin("https://badge-outpost-chaplain.ngrok-free.dev/"), "https://badge-outpost-chaplain.ngrok-free.dev");
+  for (const value of ["http://columpiostore.cl", "https://localhost:3000", "https://127.0.0.1", "https://10.0.0.2", "https://store.local"]) {
+    assert.throws(() => publicAppOrigin(value), /HTTPS público/);
+  }
+});
+
+test("same-origin acepta origen directo o APP_BASE_URL exacto y rechaza forwarded headers", () => {
+  assert.doesNotThrow(() => assertTrustedRequestOrigin(new Request("http://localhost:3000/api/storefront/cart", { headers: { origin: "http://localhost:3000" } }), null));
+  assert.doesNotThrow(() => assertTrustedRequestOrigin(new Request("http://localhost:3000/api/storefront/cart", { headers: { origin: "https://badge-outpost-chaplain.ngrok-free.dev" } }), "https://badge-outpost-chaplain.ngrok-free.dev"));
+  assert.throws(() => assertTrustedRequestOrigin(new Request("http://localhost:3000/api/storefront/cart", { headers: { origin: "https://evil.example", "x-forwarded-host": "badge-outpost-chaplain.ngrok-free.dev", "x-forwarded-proto": "https" } }), "https://badge-outpost-chaplain.ngrok-free.dev"), /Origen no permitido/);
+  assert.throws(() => assertTrustedRequestOrigin(new Request("http://localhost:3000/api/storefront/cart", { headers: { "x-forwarded-host": "badge-outpost-chaplain.ngrok-free.dev", "x-forwarded-proto": "https" } }), "https://badge-outpost-chaplain.ngrok-free.dev"), /Origen no permitido/);
+});
+
+test("allowedDevOrigins usa solo el hostname público explícito y no abre producción", async () => {
+  const config = await read("../next.config.ts");
+  assert.match(config, /process\.env\.NODE_ENV === "development"/);
+  assert.match(config, /allowedDevOrigins: publicOrigin \? \[new URL\(publicOrigin\)\.hostname\] : undefined/);
+  assert.doesNotMatch(config, /allowedDevOrigins:[\s\S]*\*\./);
+  assert.doesNotMatch(config, /x-forwarded|headers\(/i);
+});
+
+test("GET no crea cookie y POST exitoso conserva creación exclusiva de sesión", async () => {
+  const route = await read("../src/app/api/storefront/cart/route.ts");
+  const getHandler = route.match(/export async function GET[\s\S]*?\n\}/)?.[0] ?? "";
+  const postHandler = route.match(/export async function POST[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.doesNotMatch(getHandler, /cookies\.set|mutateCart/);
+  assert.match(postHandler, /assertSameOrigin\(request\)/);
+  assert.match(postHandler, /if \(result\.createdToken\) response\.cookies\.set\(CART_COOKIE/);
 });
 
 test("mutaciones exigen mismo origen y validan UUID/cantidad", async () => {
