@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { flowPublicUrl } from "@/lib/payments/flow";
 
 export const runtime = "nodejs";
 
@@ -12,5 +13,5 @@ export async function POST(request: Request) {
     return Response.json({ error: "Token inválido." }, { status: 400 });
   }
   // El retorno del navegador es informativo; no muta pedido, pago ni stock.
-  return NextResponse.redirect(new URL("/payment-result", request.url), 303);
+  return NextResponse.redirect(flowPublicUrl("/payment-result"), 303);
 }

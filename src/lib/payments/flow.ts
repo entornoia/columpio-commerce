@@ -74,16 +74,20 @@ function operationalConfig(): FlowConfig {
 
 export function assertFlowOperationalConfig() { operationalConfig(); }
 
+export function flowPublicUrl(pathname: `/${string}`) {
+  const { appBaseUrl } = operationalConfig();
+  return new URL(pathname, appBaseUrl);
+}
+
 export function signFlowParameters(parameters: Record<string, string | number>, secretKey: string) {
   const toSign = Object.keys(parameters).sort().map((key) => `${key}${parameters[key]}`).join("");
   return createHmac("sha256", secretKey).update(toSign).digest("hex");
 }
 
 export function flowCallbackUrls() {
-  const { appBaseUrl } = operationalConfig();
   return {
-    urlConfirmation: new URL("/api/payments/flow/confirmation", appBaseUrl).toString(),
-    urlReturn: new URL("/api/payments/flow/return", appBaseUrl).toString(),
+    urlConfirmation: flowPublicUrl("/api/payments/flow/confirmation").toString(),
+    urlReturn: flowPublicUrl("/api/payments/flow/return").toString(),
   };
 }
 

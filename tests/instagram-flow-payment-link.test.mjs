@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { executeCommerceTool } from "../src/lib/commerce/tools.ts";
 import { formatCommerceResponse } from "../src/lib/commerce/response-formatter.ts";
-import { assertFlowPaymentStatusMatches, createFlowGateway, flowCallbackUrls, FlowRequestError, parseFlowPaymentStatus, signFlowParameters } from "../src/lib/payments/flow.ts";
+import { assertFlowPaymentStatusMatches, createFlowGateway, flowCallbackUrls, flowPublicUrl, FlowRequestError, parseFlowPaymentStatus, signFlowParameters } from "../src/lib/payments/flow.ts";
 
 process.env.FLOW_API_KEY = "TEST_FLOW_API_KEY_NOT_REAL";
 process.env.FLOW_SECRET_KEY = "TEST_FLOW_SECRET_NOT_REAL";
@@ -100,6 +100,19 @@ test("APP_BASE_URL rechaza HTTP, localhost, loopback y redes privadas", () => {
       process.env.APP_BASE_URL = value;
       assert.throws(() => flowCallbackUrls(), /HTTPS público/);
     }
+  } finally { process.env.APP_BASE_URL = previous; }
+});
+
+test("return detrás de proxy usa siempre el origen público y no propaga token", () => {
+  const previous = process.env.APP_BASE_URL;
+  try {
+    const proxyRequest = new Request("https://localhost:3000/api/payments/flow/return", { method: "POST", body: "token=FLOWTOKEN123" });
+    process.env.APP_BASE_URL = "https://public-example.ngrok-free.dev/";
+    const location = flowPublicUrl("/payment-result");
+    assert.equal(proxyRequest.url, "https://localhost:3000/api/payments/flow/return");
+    assert.equal(location.toString(), "https://public-example.ngrok-free.dev/payment-result");
+    assert.equal(location.search, "");
+    assert.doesNotMatch(location.toString(), /localhost|FLOWTOKEN123/);
   } finally { process.env.APP_BASE_URL = previous; }
 });
 
