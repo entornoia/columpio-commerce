@@ -36,9 +36,38 @@ export class FlowRequestError extends Error {
   readonly code: string;
   readonly uncertain: boolean;
   readonly httpStatus: number | null;
-  constructor(message: string, code: string, uncertain: boolean, httpStatus: number | null = null) {
-    super(message); this.code = code; this.uncertain = uncertain; this.httpStatus = httpStatus;
+  readonly providerMessage: string | null;
+  constructor(message: string, code: string, uncertain: boolean, httpStatus: number | null = null, providerMessage: string | null = null) {
+    super(message); this.code = code; this.uncertain = uncertain; this.httpStatus = httpStatus; this.providerMessage = providerMessage;
   }
+}
+
+type SanitizedFlowProviderError = { code: string; message: string | null };
+const MAX_PROVIDER_CODE_LENGTH = 100;
+const MAX_PROVIDER_MESSAGE_LENGTH = 240;
+
+function sanitizeProviderText(value: unknown, secrets: string[]) {
+  if (typeof value !== "string") return null;
+  let sanitized = value
+    .replace(/<[^>]*>/g, " ")
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted-email]")
+    .replace(/\b(api[_-]?key|secret(?:[_-]?key)?|signature|token)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]");
+  for (const secret of secrets) {
+    if (secret) sanitized = sanitized.replaceAll(secret, "[redacted]");
+  }
+  sanitized = sanitized.replace(/\s+/g, " ").trim();
+  return sanitized ? sanitized.slice(0, MAX_PROVIDER_MESSAGE_LENGTH) : null;
+}
+
+export function normalizeFlowProviderError(body: unknown, httpStatus: number, secrets: string[] = []): SanitizedFlowProviderError {
+  const fallbackCode = `http_${httpStatus}`;
+  if (!body || typeof body !== "object" || Array.isArray(body)) return { code: fallbackCode, message: null };
+  const row = body as Record<string, unknown>;
+  const rawCode = typeof row.code === "string" || (typeof row.code === "number" && Number.isFinite(row.code)) ? String(row.code) : fallbackCode;
+  const code = rawCode.replace(/[\u0000-\u001f\u007f-\u009f]/g, "").trim().slice(0, MAX_PROVIDER_CODE_LENGTH) || fallbackCode;
+  const message = sanitizeProviderText(row.message, secrets) ?? sanitizeProviderText(row.error, secrets);
+  return { code, message };
 }
 
 type FlowConfig = { apiKey: string; secretKey: string; apiBaseUrl: string; appBaseUrl: string };
@@ -151,9 +180,17 @@ async function flowRequest(path: string, method: "GET" | "POST", parameters: Rec
   let body: unknown;
   try { body = await response.json(); } catch { body = null; }
   if (!response.ok) {
-    const code = body && typeof body === "object" && !Array.isArray(body) && typeof (body as Record<string, unknown>).code === "string"
-      ? String((body as Record<string, unknown>).code) : `http_${response.status}`;
-    throw new FlowRequestError("Flow rechazó la solicitud.", code, response.status !== 400 && response.status !== 401, response.status);
+    const provider = normalizeFlowProviderError(body, response.status, [config.apiKey, config.secretKey]);
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[flow] provider request rejected", {
+        endpoint: path === "/payment/create" ? "payment/create" : "provider request",
+        httpStatus: response.status,
+        providerCode: provider.code,
+        providerMessage: provider.message,
+        orderNumber: typeof parameters.commerceOrder === "string" ? parameters.commerceOrder : null,
+      });
+    }
+    throw new FlowRequestError("Flow rechazó la solicitud.", provider.code, response.status !== 400 && response.status !== 401, response.status, provider.message);
   }
   return body;
 }

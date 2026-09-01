@@ -10,7 +10,7 @@ type Dependencies = { db?: RpcClient; gateway?: FlowGateway };
 const attempts = new Map<string, {count:number;resetAt:number}>();
 function rateLimit(token:string){const key=createHash("sha256").update(token).digest("hex"),now=Date.now(),current=attempts.get(key);if(!current||current.resetAt<=now){attempts.set(key,{count:1,resetAt:now+10*60_000});return;}if(current.count>=5)throw new Error("Demasiados intentos de pago. Intenta nuevamente en unos minutos.");current.count+=1;}
 function row(value:unknown){if(!value||typeof value!=="object"||Array.isArray(value))throw new Error("Respuesta de pago inválida.");return value as Record<string,unknown>;}
-function safeError(error:unknown){return error instanceof FlowRequestError?error:{code:"internal_error",uncertain:true,message:"No se pudo confirmar la creación del pago."};}
+function safeError(error:unknown){return error instanceof FlowRequestError?error:{code:"internal_error",uncertain:true,message:"No se pudo confirmar la creación del pago.",providerMessage:null};}
 function canonicalStatus(status:FlowPaymentStatus){return JSON.stringify({flowOrder:status.flowOrder,commerceOrder:status.commerceOrder,status:status.status,currency:status.currency,amount:status.amount});}
 
 export async function createWebFlowPayment(token:string|undefined,input:{orderId:string;idempotencyKey:string},dependencies:Dependencies={}){
@@ -30,7 +30,7 @@ export async function createWebFlowPayment(token:string|undefined,input:{orderId
     const completed=await db.rpc("complete_web_flow_payment_attempt",{p_attempt_id:attemptId,p_claim_token:claimToken,p_provider_order_id:checkout.flowOrder,p_flow_token:checkout.token,p_payment_url:checkout.paymentUrl});
     if(completed.error)throw new FlowRequestError("No se pudo persistir el pago Flow.","persistence_error",true);
     return{paymentUrl:checkout.paymentUrl,status:"ready"};
-  }catch(cause){const failure=safeError(cause);await db.rpc("fail_web_flow_payment_attempt",{p_attempt_id:attemptId,p_claim_token:claimToken,p_error_code:failure.code,p_error_message:failure.message,p_uncertain:failure.uncertain});if(failure.uncertain)return{paymentUrl:null,status:"uncertain"};throw cause;}
+  }catch(cause){const failure=safeError(cause);await db.rpc("fail_web_flow_payment_attempt",{p_attempt_id:attemptId,p_claim_token:claimToken,p_error_code:failure.code,p_error_message:failure.providerMessage??failure.message,p_uncertain:failure.uncertain});if(failure.uncertain)return{paymentUrl:null,status:"uncertain"};throw cause;}
 }
 
 export async function confirmWebFlowToken(token:string,dependencies:Dependencies={}){
