@@ -15,6 +15,7 @@ type CatalogContextValue = {
   refresh: () => Promise<void>;
   saveProduct: (input: ProductInput, id?: string) => Promise<{ ok: true; id: string } | { ok: false; message: string }>;
   publishProduct: (id: string) => Promise<{ ok: true } | { ok: false; message: string }>;
+  adjustStock: (variantId: string, delta: number, expectedStock: number, reason: string) => Promise<{ ok: true; stock: number } | { ok: false; message: string }>;
 };
 
 const CatalogContext = createContext<CatalogContextValue | null>(null);
@@ -76,7 +77,6 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     const variants = input.variants.map((item) => ({ ...item, variantSku: item.variantSku.trim().toUpperCase(), stock: Number(item.stock) }));
     const variantSkus = variants.map((item) => item.variantSku);
     if (new Set(variantSkus).size !== variantSkus.length) return { ok: false, message: "Los SKU de variantes no pueden repetirse." };
-    if (variants.some((item) => item.stock < 0 || !Number.isInteger(item.stock))) return { ok: false, message: "El stock debe ser un número entero igual o mayor que cero." };
     if (!isSupabaseConfigured()) return { ok: false, message: "Falta configurar Supabase en .env.local." };
     const supabase = createClient();
     const { data, error: saveError } = await supabase.rpc("save_catalog_product", toRpcPayload({ ...input, variants }, id));
@@ -97,7 +97,21 @@ export function CatalogProvider({ children }: { children: React.ReactNode }) {
     return { ok: true };
   };
 
-  return <CatalogContext.Provider value={{ products, brands, categories, ready, error, refresh, saveProduct, publishProduct }}>{children}</CatalogContext.Provider>;
+  const adjustStock: CatalogContextValue["adjustStock"] = async (variantId, delta, expectedStock, reason) => {
+    if (!Number.isInteger(delta) || delta === 0) return { ok: false, message: "El ajuste debe ser un entero distinto de cero." };
+    if (!reason.trim()) return { ok: false, message: "Indica el motivo del ajuste." };
+    if (!isSupabaseConfigured()) return { ok: false, message: "Falta configurar Supabase en .env.local." };
+    const { data, error: adjustmentError } = await createClient().rpc("adjust_variant_stock", {
+      p_variant_id: variantId, p_quantity_delta: delta, p_expected_stock: expectedStock,
+      p_reason: reason.trim(), p_idempotency_key: crypto.randomUUID(), p_source: "catalog_admin",
+    });
+    if (adjustmentError) return { ok: false, message: `No se pudo ajustar el stock: ${adjustmentError.message}` };
+    const row = Array.isArray(data) ? data[0] : data;
+    await refresh();
+    return { ok: true, stock: Number((row as { stock_after?: number } | null)?.stock_after ?? expectedStock + delta) };
+  };
+
+  return <CatalogContext.Provider value={{ products, brands, categories, ready, error, refresh, saveProduct, publishProduct, adjustStock }}>{children}</CatalogContext.Provider>;
 }
 
 export function useCatalog() {

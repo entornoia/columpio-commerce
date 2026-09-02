@@ -12,11 +12,12 @@ const emptyProduct: ProductInput = { sku: "", name: "", description: "", categor
 
 export function ProductForm({ product, intakeMode = false, aiSuggestedFields = [] }: { product?: Product; intakeMode?: boolean; aiSuggestedFields?: (keyof ProductInput)[] }) {
   const router = useRouter();
-  const { brands, categories, saveProduct, publishProduct } = useCatalog();
-  const [form, setForm] = useState<ProductInput>(product ? { ...product, variants: product.variants.map((item) => ({ ...item })), occasions: [...product.occasions] } : emptyProduct);
+  const { brands, categories, saveProduct, publishProduct, adjustStock } = useCatalog();
+  const [form, setForm] = useState<ProductInput>(product ? { ...product, variants: product.variants.some((item) => item.active) ? product.variants.filter((item) => item.active).map((item) => ({ ...item })) : [emptyVariant()], occasions: [...product.occasions] } : emptyProduct);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [stockDrafts, setStockDrafts] = useState<Record<string, { delta: number; reason: string; saving: boolean; message: string }>>({});
   const set = <K extends keyof ProductInput>(key: K, value: ProductInput[K]) => setForm((current) => ({ ...current, [key]: value }));
   const updateVariant = (id: string, key: keyof Variant, value: string | number | boolean) => set("variants", form.variants.map((item) => item.id === id ? { ...item, [key]: value } : item));
   const aiHint = (key: keyof ProductInput) => aiSuggestedFields.includes(key) ? <small className="ai-field-hint">Sugerido por IA · revísalo antes de guardar.</small> : null;
@@ -34,6 +35,15 @@ export function ProductForm({ product, intakeMode = false, aiSuggestedFields = [
     setPublishing(false);
     if (!result.ok) return setError(result.message);
     router.push("/productos");
+  };
+  const stockDraft = (variantId: string) => stockDrafts[variantId] ?? { delta: 0, reason: "", saving: false, message: "" };
+  const setStockDraft = (variantId: string, patch: Partial<{ delta: number; reason: string; saving: boolean; message: string }>) =>
+    setStockDrafts((current) => ({ ...current, [variantId]: { ...stockDraft(variantId), ...patch } }));
+  const submitStockAdjustment = async (variant: Variant) => {
+    const draft = stockDraft(variant.id);
+    setStockDraft(variant.id, { saving: true, message: "" });
+    const result = await adjustStock(variant.id, draft.delta, variant.stock, draft.reason);
+    setStockDraft(variant.id, { saving: false, message: result.ok ? `Stock actualizado a ${result.stock}.` : result.message, delta: result.ok ? 0 : draft.delta, reason: result.ok ? "" : draft.reason });
   };
   return <form onSubmit={submit} className="product-form">
     {error && <div className="form-error">{error}</div>}
@@ -58,17 +68,20 @@ export function ProductForm({ product, intakeMode = false, aiSuggestedFields = [
         <label className="span-2">Ocasiones <input value={form.occasions.join(", ")} onChange={(e) => set("occasions", e.target.value.split(",").map((item) => item.trim()).filter(Boolean))} placeholder="Oficina, cena, evento" /><small>Separa cada ocasión con una coma.</small></label>
       </div>
     </section>
-    <section className="form-section"><div className="section-heading"><span>02</span><div><h2>Variantes y stock</h2><p>Cada combinación debe tener un SKU único y stock no negativo.</p></div></div>
-      <div className="variant-list">{form.variants.map((item, index) => <div className="variant-row" key={item.id}><strong>Variante {index + 1}</strong><label>SKU<input required value={item.variantSku} onChange={(e) => updateVariant(item.id, "variantSku", e.target.value)} placeholder={`${form.sku || "CM-000"}-NEG-S`} /></label><label>Color<input required value={item.color} onChange={(e) => updateVariant(item.id, "color", e.target.value)} placeholder="Negro" /></label><label>Talla<input required value={item.size} onChange={(e) => updateVariant(item.id, "size", e.target.value)} placeholder="S" /></label><label>Stock<input required type="number" min="0" step="1" value={item.stock} onChange={(e) => updateVariant(item.id, "stock", Number(e.target.value))} /></label>{form.variants.length > 1 && <button type="button" className="remove" onClick={() => set("variants", form.variants.filter((variant) => variant.id !== item.id))} aria-label="Eliminar variante">×</button>}</div>)}</div>
+    <section className="form-section"><div className="section-heading"><span>02</span><div><h2>Información de variantes</h2><p>SKU, color y talla conservan permanentemente el UUID. Quitar una variante la desactiva.</p></div></div>
+      <div className="variant-list">{form.variants.map((item, index) => <div className="variant-row" key={item.id}><strong>Variante {index + 1}</strong><label>SKU<input required value={item.variantSku} onChange={(e) => updateVariant(item.id, "variantSku", e.target.value)} placeholder={`${form.sku || "CM-000"}-NEG-S`} /></label><label>Color<input required value={item.color} onChange={(e) => updateVariant(item.id, "color", e.target.value)} placeholder="Negro" /></label><label>Talla<input required value={item.size} onChange={(e) => updateVariant(item.id, "size", e.target.value)} placeholder="S" /></label><label>Stock físico<input readOnly value={item.stock} aria-label={`Stock físico ${item.variantSku || index + 1}`} /><small>Se modifica mediante ajuste auditable.</small></label>{form.variants.length > 1 && <button type="button" className="remove" onClick={() => set("variants", form.variants.filter((variant) => variant.id !== item.id))} aria-label="Desactivar variante">×</button>}</div>)}</div>
       <button type="button" className="secondary-button" onClick={() => set("variants", [...form.variants, emptyVariant()])}><Icon name="plus" size={17}/> Agregar otra variante</button>
     </section>
+    {product && <section className="form-section"><div className="section-heading"><span>STK</span><div><h2>Ajustar stock</h2><p>Cada cambio exige motivo, valida el stock esperado y crea un movimiento de inventario.</p></div></div>
+      <div className="variant-list">{product.variants.map((variant) => { const draft = stockDraft(variant.id); return <div className="variant-row stock-adjustment-row" key={variant.id}><strong>{variant.variantSku}</strong><span>{variant.color} · {variant.size}</span><label>Stock actual<input readOnly value={variant.stock}/></label><label>Ajuste (+/-)<input type="number" step="1" value={draft.delta} onChange={(event) => setStockDraft(variant.id, { delta: Number(event.target.value), message: "" })}/></label><label>Motivo<input value={draft.reason} onChange={(event) => setStockDraft(variant.id, { reason: event.target.value, message: "" })} placeholder="Recepción, corrección, merma…"/></label><button type="button" className="secondary-button" disabled={draft.saving || draft.delta === 0 || !draft.reason.trim()} onClick={() => void submitStockAdjustment(variant)}>{draft.saving ? "Ajustando…" : "Registrar ajuste"}</button>{draft.message && <small>{draft.message}</small>}</div>; })}</div>
+    </section>}
     <section className="form-section"><div className="section-heading"><span>03</span><div><h2>Imágenes y estado</h2><p>Estructura preparada para URLs de imágenes de Supabase Storage.</p></div></div>
       {product ? <ProductImageManager productId={product.id} productName={form.name} images={form.images} onChange={(images) => set("images", images)}/> : <div className="image-manager-empty"><strong>Guarda primero el producto</strong><p>Después podrás cargar fotografías usando su identificador definitivo.</p></div>}
       <div className="form-grid"><label className="toggle-label"><input type="checkbox" checked={form.active} onChange={(e) => set("active", e.target.checked)} /><span/> Producto activo</label></div>
       <div className="form-grid"><label>Título SEO <input value={form.seoTitle} onChange={(e) => set("seoTitle", e.target.value)} placeholder="Título para buscadores" /></label><label>Descripción SEO <textarea value={form.seoDescription} onChange={(e) => set("seoDescription", e.target.value)} placeholder="Descripción para buscadores y redes" /></label></div>
     </section>
     {product && form.publicationStatus !== "published" && !intakeMode && <p className="form-help">Guarda primero cualquier cambio pendiente. Publicar valida la versión actualmente guardada.</p>}
-    {intakeMode && <p className="form-help">La fotografía y el análisis ya están guardados. Completa manualmente SKU, precio, tallas y stock. La publicación seguirá siendo una acción posterior.</p>}
+    {intakeMode && <p className="form-help">La fotografía y el análisis ya están guardados. Completa SKU, precio y tallas; después de guardar, registra el stock mediante el ajuste auditable. La publicación seguirá siendo una acción posterior.</p>}
     <div className="form-actions"><button type="button" className="text-button" onClick={() => router.back()}>Cancelar</button>{product && form.publicationStatus !== "published" && !intakeMode && <button className="secondary-button" type="button" disabled={saving || publishing} onClick={() => void publish()}>{publishing ? "Publicando…" : "Publicar explícitamente"}</button>}<button className="primary-button" type="submit" disabled={saving || publishing}>{saving ? "Guardando…" : intakeMode ? "Guardar producto" : product ? "Guardar cambios" : "Crear producto"}<Icon name="arrow" size={18}/></button></div>
   </form>;
 }

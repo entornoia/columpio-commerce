@@ -88,7 +88,7 @@ export function toRpcPayload(input: ProductInput, id?: string) {
     },
     p_variants: input.variants.map((variant) => ({
       id: variant.id, variant_sku: variant.variantSku.trim().toUpperCase(), color: variant.color.trim(),
-      size: variant.size.trim(), stock: Number(variant.stock), active: variant.active,
+      size: variant.size.trim(), active: variant.active,
     })),
     p_images: input.images.filter((image) => !image.storagePath).map((image) => ({
       id: image.id, image_url: image.imageUrl.trim(), position: image.position, alt_text: image.altText.trim(),

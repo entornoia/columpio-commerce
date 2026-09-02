@@ -7,6 +7,17 @@ export type Variant = {
   active: boolean;
 };
 
+export type InventoryMovement = {
+  id: string;
+  variantId: string;
+  quantityDelta: number;
+  stockBefore: number;
+  stockAfter: number;
+  reason: string;
+  source: string;
+  createdAt: string;
+};
+
 export type ProductImageStatus = "pending" | "ready" | "delete_pending" | "failed";
 export type ProductImage = {
   id: string;
