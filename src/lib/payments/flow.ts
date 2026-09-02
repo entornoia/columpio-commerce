@@ -70,6 +70,12 @@ export function normalizeFlowProviderError(body: unknown, httpStatus: number, se
   return { code, message };
 }
 
+export const INVALID_FLOW_EMAIL_MESSAGE = "El correo ingresado no fue aceptado por el medio de pago. Revísalo e intenta nuevamente.";
+
+export function flowPublicErrorMessage(providerCode: string) {
+  return providerCode === "1620" ? INVALID_FLOW_EMAIL_MESSAGE : "Flow rechazó la solicitud.";
+}
+
 type FlowConfig = { apiKey: string; secretKey: string; apiBaseUrl: string; appBaseUrl: string };
 
 function operationalConfig(): FlowConfig {
@@ -190,7 +196,7 @@ async function flowRequest(path: string, method: "GET" | "POST", parameters: Rec
         orderNumber: typeof parameters.commerceOrder === "string" ? parameters.commerceOrder : null,
       });
     }
-    throw new FlowRequestError("Flow rechazó la solicitud.", provider.code, response.status !== 400 && response.status !== 401, response.status, provider.message);
+    throw new FlowRequestError(flowPublicErrorMessage(provider.code), provider.code, response.status !== 400 && response.status !== 401, response.status, provider.message);
   }
   return body;
 }
