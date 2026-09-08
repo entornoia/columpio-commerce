@@ -7,7 +7,7 @@ export class EmailProviderError extends Error{readonly code:string;constructor(m
 
 export function createResendProvider(fetcher:typeof fetch=fetch):EmailProvider{
   const apiKey=process.env.RESEND_API_KEY;const from=process.env.ORDER_EMAIL_FROM;
-  if(!apiKey||!from)throw new Error("Falta configurar el proveedor de email transaccional.");
+  if(!apiKey||!from)throw new EmailProviderError("Proveedor de email no configurado.","provider_not_configured");
   return{async send(message){
     const response=await fetcher("https://api.resend.com/emails",{method:"POST",headers:{authorization:`Bearer ${apiKey}`,"content-type":"application/json","idempotency-key":message.idempotencyKey},body:JSON.stringify({from,to:[message.to],subject:message.subject,html:message.html,text:message.text})});
     const body=await response.json().catch(()=>null) as {id?:unknown;name?:unknown;message?:unknown}|null;

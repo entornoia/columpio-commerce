@@ -22,11 +22,11 @@ export async function buildPaidOrderEmail(db:Db,orderId:string){
 }
 
 export async function dispatchPaidOrderEmails(limit=25,deps:Dependencies={}){
-  const db=deps.db??createServiceClient() as unknown as Db,provider=deps.provider??createResendProvider(),logger=deps.logger??console;
+  const db=deps.db??createServiceClient() as unknown as Db,logger=deps.logger??console;
   const claim=await db.rpc("claim_web_order_email_events",{p_limit:limit});if(claim.error)throw new Error("No se pudo reclamar el outbox de emails.");
   let sent=0,failed=0;
   for(const event of claim.data??[]){
-    try{const content=await buildPaidOrderEmail(db,event.order_id);const delivered=await provider.send({...content,idempotencyKey:`order-paid/${event.event_id}`});const done=await db.rpc("complete_web_order_email_event",{p_event_id:event.event_id,p_provider_message_id:delivered.id});if(done.error||done.data!==true)throw new Error("No se pudo completar el evento de email.");sent++;logger.info("[order-email] sent",{eventId:event.event_id,orderNumber:content.orderNumber});}
+    try{const provider=deps.provider??createResendProvider();const content=await buildPaidOrderEmail(db,event.order_id);const delivered=await provider.send({...content,idempotencyKey:`order-paid/${event.event_id}`});const done=await db.rpc("complete_web_order_email_event",{p_event_id:event.event_id,p_provider_message_id:delivered.id});if(done.error||done.data!==true)throw new Error("No se pudo completar el evento de email.");sent++;logger.info("[order-email] sent",{eventId:event.event_id,orderNumber:content.orderNumber});}
     catch(cause){const code=cause instanceof EmailProviderError?cause.code:"internal_error";const message=cause instanceof Error?cause.message:"No se pudo enviar el correo.";await db.rpc("fail_web_order_email_event",{p_event_id:event.event_id,p_error_code:code,p_error_message:message});failed++;logger.error("[order-email] failed",{eventId:event.event_id,code});}
   }
   return{claimed:claim.data?.length??0,sent,failed};
