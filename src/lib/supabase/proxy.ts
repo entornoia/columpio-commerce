@@ -2,6 +2,11 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseConfig, isSupabaseConfigured } from "./config";
 
+const internalMaintenanceRoutes = new Set([
+  "/api/internal/maintenance/expire-payments",
+  "/api/internal/maintenance/send-order-emails",
+]);
+
 export async function updateSession(request: NextRequest) {
   const publicPages = ["/", "/privacy", "/terms", "/data-deletion", "/payment-result"];
   const isPublicStorefront = request.nextUrl.pathname.startsWith("/producto/")
@@ -27,6 +32,12 @@ export async function updateSession(request: NextRequest) {
 
   // Flow necesita callbacks públicos exactos; no se abre ninguna otra ruta API.
   if (["/api/payments/flow/confirmation", "/api/payments/flow/return"].includes(request.nextUrl.pathname)) {
+    return NextResponse.next({ request });
+  }
+
+  // Estos dos handlers no usan cookies administrativas: cada uno valida su
+  // Authorization Bearer contra CRON_SECRET antes de ejecutar cualquier tarea.
+  if (internalMaintenanceRoutes.has(request.nextUrl.pathname)) {
     return NextResponse.next({ request });
   }
 
