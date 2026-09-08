@@ -16,6 +16,7 @@ export type AdminOrderDetail = AdminOrderListItem & {
   payment: Record<string, unknown> | null; attempts: Record<string, unknown>[];
   paymentEvents: Record<string, unknown>[]; reservation: Record<string, unknown> | null;
   reservationItems: Record<string, unknown>[]; adminEvents: Record<string, unknown>[];
+  emailEvent: Record<string, unknown> | null;
 };
 
 type Row = Record<string, unknown>;
@@ -50,7 +51,7 @@ export async function getAdminOrder(id: string): Promise<AdminOrderDetail | null
   const orderResult = await db.from("web_orders").select(LIST_SELECT + ",currency,items_subtotal,discount_total,shipping_total,paid_at,updated_at,shipping_snapshot,promotion_snapshot").eq("id", id).maybeSingle();
   if (orderResult.error) throw new Error("No se pudo cargar el pedido.");
   if (!orderResult.data) return null;
-  const [customer,address,items,discounts,payment,reservation,adminEvents] = await Promise.all([
+  const [customer,address,items,discounts,payment,reservation,adminEvents,emailEvent] = await Promise.all([
     db.from("web_order_customers").select("email,first_name,last_name,phone,created_at").eq("order_id",id).maybeSingle(),
     db.from("web_order_addresses").select("delivery_type,recipient_name,phone,street,street_number,complement,region_code,region_name,commune,postal_code,delivery_instructions,created_at").eq("order_id",id).maybeSingle(),
     db.from("web_order_items").select("id,product_name,product_slug,product_sku,variant_sku,brand,category,color,size,image_url,quantity,list_unit_price,unit_discount,final_unit_price,line_subtotal,promotion_snapshot,created_at").eq("order_id",id).order("created_at"),
@@ -58,8 +59,9 @@ export async function getAdminOrder(id: string): Promise<AdminOrderDetail | null
     db.from("web_payments").select("id,provider,status,amount,currency,stock_exception,stock_exception_at,paid_at,failed_at,refunded_at,created_at,updated_at").eq("order_id",id).maybeSingle(),
     db.from("web_stock_reservations").select("id,status,expires_at,consumed_at,released_at,release_reason,created_at,updated_at").eq("order_id",id).maybeSingle(),
     db.from("web_order_admin_events").select("id,event_type,from_status,to_status,actor_user_id,note,created_at").eq("order_id",id).order("created_at",{ascending:false}),
+    db.from("web_order_email_events").select("event_type,status,attempts,last_error_code,last_error_message,created_at,sent_at,updated_at").eq("order_id",id).eq("event_type","order_paid_confirmation").maybeSingle(),
   ]);
-  const failure = [customer,address,items,discounts,payment,reservation,adminEvents].find((result) => result.error);
+  const failure = [customer,address,items,discounts,payment,reservation,adminEvents,emailEvent].find((result) => result.error);
   if (failure?.error) throw new Error("No se pudo reconstruir el detalle histórico del pedido.");
   const paymentRow = payment.data as Row | null;
   const reservationRow = reservation.data as Row | null;
@@ -78,5 +80,6 @@ export async function getAdminOrder(id: string): Promise<AdminOrderDetail | null
     items:(items.data ?? []) as Row[], discounts:(discounts.data ?? []) as Row[], payment:paymentRow,
     attempts:(attempts.data ?? []) as Row[], paymentEvents:(events.data ?? []) as Row[], reservation:reservationRow,
     reservationItems:(reservationItems.data ?? []) as Row[], adminEvents:(adminEvents.data ?? []) as Row[],
+    emailEvent:(emailEvent.data ?? null) as Row | null,
   };
 }
