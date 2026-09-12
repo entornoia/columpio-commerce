@@ -5,6 +5,7 @@ import { listPublicCategories } from "@/lib/storefront/catalog";
 import type { PublicCatalogCategory } from "@/lib/storefront/catalog-types";
 import { CartProvider } from "@/components/storefront/cart-provider";
 import "./storefront.css";
+import "./storefront-preview-polish.css";
 
 export const metadata: Metadata = { title: { absolute: "Columpio Store" }, description: "Una selección de moda femenina contemporánea de Columpio Mujer." };
 export const dynamic = "force-dynamic";

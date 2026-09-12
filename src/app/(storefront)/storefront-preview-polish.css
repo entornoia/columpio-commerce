@@ -1,0 +1,52 @@
+/* Focused storefront refinements validated in the public Preview. */
+.store-collection-toolbar button {
+  min-height: 40px;
+  padding: 8px 10px;
+  justify-content: center;
+}
+
+.store-cart-mini-image.store-visual,
+.store-cart-row-image.store-visual {
+  aspect-ratio: 3 / 4;
+}
+
+.store-cart-mini-image.store-visual small,
+.store-cart-row-image.store-visual small {
+  bottom: 8px;
+  font-size: 6px;
+  letter-spacing: 0.1em;
+}
+
+.store-checkout-form {
+  grid-template-columns: 1fr;
+}
+
+.store-checkout-wide,
+.store-checkout-delivery,
+.store-checkout-submit {
+  grid-column: 1;
+}
+
+@media (min-width: 760px) {
+  .store-desktop-nav {
+    gap: clamp(14px, 1.8vw, 30px);
+  }
+
+  .store-checkout-form {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .store-checkout-wide,
+  .store-checkout-delivery,
+  .store-checkout-submit {
+    grid-column: 1 / -1;
+  }
+
+  .store-categories {
+    padding-bottom: 52px;
+  }
+
+  .store-categories + .store-section {
+    padding-top: 52px;
+  }
+}

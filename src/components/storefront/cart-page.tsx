@@ -1,10 +1,9 @@
 "use client";
-/* eslint-disable @next/next/no-img-element -- Storage público; next/image queda fuera de este bloque. */
-
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { productPath } from "@/lib/storefront/urls";
 import { useCart } from "./cart-provider";
+import { ProductVisual } from "./product-visual";
 
 const money = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
 
@@ -42,7 +41,7 @@ export function CartPage() {
     {error && <p className="store-cart-error">{error}</p>}
     {!loading && cart.items.length === 0 ? <div className="store-cart-page-empty"><p>Aún no agregas prendas.</p><Link href="/coleccion/chaquetas">Ver colección</Link></div> :
       <div className="store-cart-layout"><div>{cart.items.map((item) => <article className="store-cart-row" key={item.itemId}>
-        <div className="store-cart-row-image">{item.imageUrl ? <img src={item.imageUrl} alt={item.name}/> : <span>COL</span>}</div>
+        <ProductVisual className="store-cart-row-image" label={item.name} imageUrl={item.imageUrl ?? undefined}/>
         <div className="store-cart-row-copy"><Link href={productPath(item.slug)}>{item.name}</Link><small>{item.color} · Talla {item.size}</small>
           <strong>{money.format(item.unitPrice)}</strong>{item.discountAmount > 0 && <small>Descuento: −{money.format(item.discountAmount)}</small>}
           {!item.available && <em>La disponibilidad cambió. Ajusta o elimina esta prenda.</em>}

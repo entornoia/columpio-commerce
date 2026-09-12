@@ -26,7 +26,7 @@ export function StorefrontHeader({ categories }: { categories: PublicCatalogCate
         </details>
         <Link className="store-logo" href="/"><span>Columpio</span><small>STORE</small></Link>
         <nav className="store-desktop-nav" aria-label="Navegación principal">
-          <Link href="/">Inicio</Link>{categories.slice(0, 5).map((item) => <Link key={item.slug} href={collectionPath(item.slug)}>{item.name}</Link>)}
+          <Link href="/">Inicio</Link>{categories.map((item) => <Link key={item.slug} href={collectionPath(item.slug)}>{item.name}</Link>)}
         </nav>
         <div className="store-header-actions"><button className="store-icon-button" aria-label="Buscar"><StoreIcon name="search"/></button><button className="store-icon-button store-bag" aria-label={`Abrir carrito, ${cart.count} productos`} onClick={openDrawer}><StoreIcon name="bag"/><span>{cart.count}</span></button></div>
       </div>

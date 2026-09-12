@@ -1,11 +1,10 @@
 "use client";
-/* eslint-disable @next/next/no-img-element -- URLs públicas de Storage se validan server-side y aún no se configura next/image. */
-
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { EMPTY_WEB_CART, type WebCart } from "@/lib/storefront/cart-contract";
 import { productPath } from "@/lib/storefront/urls";
+import { ProductVisual } from "./product-visual";
 
 type CartContextValue = {
   cart: WebCart; loading: boolean; error: string; drawerOpen: boolean;
@@ -59,7 +58,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     async setDiscountCode(code) { return mutate("/api/storefront/cart/discount", { method: code ? "PUT" : "DELETE", body: code ? JSON.stringify({ code }) : undefined }); },
   }), [cart, loading, error, drawerOpen, mutate, refresh]);
 
-  return <CartContext.Provider value={value}>{children}<div className={`store-cart-backdrop ${drawerOpen ? "open" : ""}`} onClick={() => setDrawerOpen(false)}/><aside className={`store-cart-drawer ${drawerOpen ? "open" : ""}`} aria-hidden={!drawerOpen}><div className="store-cart-drawer-head"><h2>Tu carrito</h2><button onClick={() => setDrawerOpen(false)} aria-label="Cerrar carrito">×</button></div>{error && <p className="store-cart-error">{error}</p>}<div className="store-cart-drawer-items">{cart.items.length === 0 ? <p className="store-cart-empty">Tu carrito está vacío.</p> : cart.items.map((item) => <article className="store-cart-mini" key={item.itemId}><div className="store-cart-mini-image">{item.imageUrl ? <img src={item.imageUrl} alt={item.name}/> : <span>COL</span>}</div><div><Link href={productPath(item.slug)} onClick={() => setDrawerOpen(false)}>{item.name}</Link><small>{item.color} · Talla {item.size}</small><span>{item.quantity} × {money.format(item.unitPrice)}</span><button onClick={() => value.remove(item.itemId)}>Eliminar</button>{!item.available && <em>Revisar disponibilidad</em>}</div></article>)}</div>{cart.items.length > 0 && <div className="store-cart-drawer-foot"><p><span>Total estimado</span><strong>{money.format(cart.estimatedTotal)}</strong></p><Link href="/carrito" onClick={() => setDrawerOpen(false)}>Ver carrito</Link></div>}</aside></CartContext.Provider>;
+  return <CartContext.Provider value={value}>{children}<div className={`store-cart-backdrop ${drawerOpen ? "open" : ""}`} onClick={() => setDrawerOpen(false)}/><aside className={`store-cart-drawer ${drawerOpen ? "open" : ""}`} aria-hidden={!drawerOpen}><div className="store-cart-drawer-head"><h2>Tu carrito</h2><button onClick={() => setDrawerOpen(false)} aria-label="Cerrar carrito">×</button></div>{error && <p className="store-cart-error">{error}</p>}<div className="store-cart-drawer-items">{cart.items.length === 0 ? <p className="store-cart-empty">Tu carrito está vacío.</p> : cart.items.map((item) => <article className="store-cart-mini" key={item.itemId}><ProductVisual className="store-cart-mini-image" label={item.name} imageUrl={item.imageUrl ?? undefined}/><div><Link href={productPath(item.slug)} onClick={() => setDrawerOpen(false)}>{item.name}</Link><small>{item.color} · Talla {item.size}</small><span>{item.quantity} × {money.format(item.unitPrice)}</span><button onClick={() => value.remove(item.itemId)}>Eliminar</button>{!item.available && <em>Revisar disponibilidad</em>}</div></article>)}</div>{cart.items.length > 0 && <div className="store-cart-drawer-foot"><p><span>Total estimado</span><strong>{money.format(cart.estimatedTotal)}</strong></p><Link href="/carrito" onClick={() => setDrawerOpen(false)}>Ver carrito</Link></div>}</aside></CartContext.Provider>;
 }
 
 export function useCart() {
