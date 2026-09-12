@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
@@ -38,7 +39,7 @@ export default function LoginPage() {
       <label>Contraseña<input name="password" type="password" autoComplete="current-password" required disabled={!configured} /></label>
       {error && <div className="form-error">{error}</div>}
       <button className="primary-button" disabled={!configured || loading}>{loading ? "Ingresando…" : "Ingresar"}</button>
+      <Link className="login-help-link" href="/forgot-password">Olvidé mi contraseña</Link>
     </form>
   </section></main>;
 }
-

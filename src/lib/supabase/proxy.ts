@@ -8,7 +8,7 @@ const internalMaintenanceRoutes = new Set([
 ]);
 
 export async function updateSession(request: NextRequest) {
-  const publicPages = ["/", "/privacy", "/terms", "/data-deletion", "/payment-result"];
+  const publicPages = ["/", "/privacy", "/terms", "/data-deletion", "/payment-result", "/forgot-password", "/reset-password"];
   const isPublicStorefront = request.nextUrl.pathname.startsWith("/producto/")
     || request.nextUrl.pathname.startsWith("/coleccion/")
     || request.nextUrl.pathname === "/carrito"
