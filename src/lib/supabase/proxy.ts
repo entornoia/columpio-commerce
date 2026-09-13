@@ -70,7 +70,7 @@ export async function updateSession(request: NextRequest) {
 
   if (data?.claims && isLogin) {
     const urlToDashboard = request.nextUrl.clone();
-    urlToDashboard.pathname = "/admin";
+    urlToDashboard.pathname = "/productos";
     return NextResponse.redirect(urlToDashboard);
   }
 

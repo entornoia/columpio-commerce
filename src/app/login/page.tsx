@@ -24,7 +24,7 @@ export default function LoginPage() {
     });
     setLoading(false);
     if (authError) return setError("Correo o contraseña incorrectos.");
-    router.replace("/");
+    router.replace("/productos");
     router.refresh();
   }
 
