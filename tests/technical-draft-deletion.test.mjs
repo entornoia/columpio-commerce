@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const migration = await readFile(new URL("../supabase/migrations/20260913162649_delete_orphan_technical_drafts.sql", import.meta.url), "utf8");
+const regexFixMigration = await readFile(new URL("../supabase/migrations/20260913171009_fix_technical_draft_storage_path_regex.sql", import.meta.url), "utf8");
 const route = await readFile(new URL("../src/app/api/admin/products/[id]/draft-deletion/route.ts", import.meta.url), "utf8");
 const button = await readFile(new URL("../src/components/delete-technical-draft-button.tsx", import.meta.url), "utf8");
 const form = await readFile(new URL("../src/components/product-form.tsx", import.meta.url), "utf8");
@@ -20,6 +21,42 @@ function eligibleDraft(overrides = {}) {
     && draft.slugHistory === 0 && draft.slugRegistry === 1 && draft.invalidStorage === 0
     && draft.unregisteredStorage === 0;
 }
+
+function validStorageMetadata(productId, imageId, path, bucket = "product-images") {
+  return bucket === "product-images" && new RegExp(`^${productId}/${imageId}\\.(jpg|jpeg|png|webp)$`).test(path);
+}
+
+test("correctiva reemplaza exclusivamente el escape adicional del regex", () => {
+  const originalFunction = migration.slice(
+    migration.indexOf("create or replace function public.technical_draft_deletion_snapshot"),
+    migration.indexOf("alter function public.technical_draft_deletion_snapshot"),
+  ).trim();
+  const correctedFunction = regexFixMigration.slice(
+    regexFixMigration.indexOf("create or replace function public.technical_draft_deletion_snapshot"),
+    regexFixMigration.indexOf("commit;"),
+  ).trim();
+  assert.match(migration, /image\.storage_path !~[\s\S]*'\\\\\.\(jpg\|jpeg\|png\|webp\)\$'/);
+  assert.match(regexFixMigration, /image\.storage_path !~[\s\S]*'\\\.\(jpg\|jpeg\|png\|webp\)\$'/);
+  assert.equal(correctedFunction, originalFunction.replace(String.raw`\\.(jpg|jpeg|png|webp)$`, String.raw`\.(jpg|jpeg|png|webp)$`));
+  assert.doesNotMatch(regexFixMigration, /grant |revoke |alter table|create table|delete from|update public|insert into/i);
+});
+
+test("regex corregido acepta extensiones de imagen permitidas", () => {
+  const productId = "f47aa12f-bd28-427b-9c9d-af46e9ba83ed";
+  const imageId = "fb70185b-f7cc-483a-a94f-5625df11a160";
+  for (const extension of ["png", "jpg", "jpeg", "webp"]) {
+    assert.equal(validStorageMetadata(productId, imageId, `${productId}/${imageId}.${extension}`), true);
+  }
+});
+
+test("regex corregido rechaza extensión, producto o metadata inconsistentes", () => {
+  const productId = "f47aa12f-bd28-427b-9c9d-af46e9ba83ed";
+  const imageId = "fb70185b-f7cc-483a-a94f-5625df11a160";
+  assert.equal(validStorageMetadata(productId, imageId, `${productId}/${imageId}.gif`), false);
+  assert.equal(validStorageMetadata(productId, imageId, `e8024654-3910-442a-a660-6c5a57fc51f8/${imageId}.png`), false);
+  assert.equal(validStorageMetadata(productId, imageId, `${productId}/447bdadf-90f1-4bd4-a651-9cde9e8dbf18.png`), false);
+  assert.equal(validStorageMetadata(productId, imageId, `${productId}/${imageId}.png`, "other-bucket"), false);
+});
 
 test("migración es nueva, transaccional y no altera estructuras comerciales", () => {
   assert.match(migration, /^begin;/);
