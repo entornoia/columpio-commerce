@@ -1,6 +1,11 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
-import { analyzeCatalogProductImage, validatedCatalogImageFromBytes } from "@/lib/catalog-product-analysis";
+import {
+  analyzeCatalogProductImage,
+  CatalogProductAnalysisStageError,
+  productAnalysisDiagnostic,
+  validatedCatalogImageFromBytes,
+} from "@/lib/catalog-product-analysis";
 import { estimateTokenCostUsd } from "@/lib/agent/cost";
 import { createClient } from "@/lib/supabase/server";
 
@@ -68,9 +73,22 @@ export async function POST(request: Request) {
     const categoryResult = categorySlug
       ? await supabase.from("categories").select("id, slug, name").eq("brand_id", product.brand_id).eq("slug", categorySlug).eq("active", true).maybeSingle()
       : { data: null, error: null };
-    if (categoryResult.error || (categorySlug && !categoryResult.data)) throw new Error("invalid_category");
+    if (categoryResult.error) {
+      throw new CatalogProductAnalysisStageError(
+        "category_resolution", "category_lookup_failed", "Normalized category lookup failed.",
+      );
+    }
+    if (categorySlug && !categoryResult.data) {
+      throw new CatalogProductAnalysisStageError(
+        "category_resolution", "invalid_category", "Normalized category was not found.",
+      );
+    }
     const { error: completeError } = await supabase.rpc("complete_product_intake_analysis", { p_product_id: product.id, p_model: analyzed.model });
-    if (completeError) throw new Error("complete_failed");
+    if (completeError) {
+      throw new CatalogProductAnalysisStageError(
+        "analysis_finalize", "complete_failed", "Product analysis finalization failed.",
+      );
+    }
     const usage = {
       inputTokens: analyzed.usage?.input_tokens ?? 0,
       outputTokens: analyzed.usage?.output_tokens ?? 0,
@@ -84,8 +102,9 @@ export async function POST(request: Request) {
       usage,
       estimatedCostUsd: estimateTokenCostUsd(analyzed.model, usage),
     });
-  } catch {
+  } catch (error) {
     const safeMessage = "No se pudo analizar la prenda. Puedes reintentar cuando quieras.";
+    console.error("[catalog_product_analysis_failure]", JSON.stringify(productAnalysisDiagnostic(error, "openai_request")));
     await supabase.rpc("fail_product_intake_analysis", { p_product_id: product.id, p_error: safeMessage });
     return NextResponse.json({ error: safeMessage }, { status: 502 });
   }

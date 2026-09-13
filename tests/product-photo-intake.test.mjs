@@ -225,3 +225,59 @@ test("017 conserva intake, Storage, publicación y catálogo sin cambios funcion
   assert.match(imageStorageMigration, /public\.save_catalog_product_legacy_015\(p_product, p_variants, legacy_images\)/);
   assert.doesNotMatch(permissionFixMigration, /create table|alter table|drop |truncate|publish_catalog_product|list_public_products|advisor/i);
 });
+
+test("diagnostico sanitiza OpenAI.APIError sin conservar secretos ni contenido binario", () => {
+  assert.match(analysis, /source instanceof OpenAI\.APIError/);
+  assert.match(analysis, /apiError\?\.status/);
+  assert.match(analysis, /apiError\?\.type/);
+  assert.match(analysis, /apiError\?\.code/);
+  assert.doesNotMatch(analysis.slice(analysis.indexOf("export function productAnalysisDiagnostic"), analysis.indexOf("export type SuggestionBasis")), /apiError\?\.headers|requestID|request_id/);
+
+  const sanitizerSource = analysis.match(/export function sanitizeProductAnalysisDiagnosticMessage\(value: unknown\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(sanitizerSource);
+  const runnableSource = sanitizerSource.replace(
+    "export function sanitizeProductAnalysisDiagnosticMessage(value: unknown)",
+    "function sanitizeProductAnalysisDiagnosticMessage(value)",
+  );
+  const sanitize = Function(`const MAX_DIAGNOSTIC_MESSAGE_LENGTH = 320; ${runnableSource}; return sanitizeProductAnalysisDiagnosticMessage;`)();
+  const unsafe = `<b>Error</b> sk-exampleSecret123 Authorization: Bearer token123 https://example.test/image?token=secret data:image/png;base64,${"A".repeat(120)}`;
+  const sanitized = sanitize(unsafe);
+  assert.ok(sanitized.length <= 320);
+  for (const forbidden of ["<b>", "sk-exampleSecret123", "token123", "example.test", "data:image", "A".repeat(80)]) {
+    assert.doesNotMatch(sanitized, new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+});
+
+test("respuesta OpenAI incompleta queda identificada en openai_response", () => {
+  assert.match(analysis, /stage: "openai_response"/);
+  assert.match(analysis, /hasResponseError: Boolean\(response\.error\)/);
+  assert.match(analysis, /hasIncompleteDetails: Boolean\(response\.incomplete_details\)/);
+  assert.match(analysis, /response\.status === "incomplete" \|\| response\.incomplete_details \? "incomplete_response"/);
+});
+
+test("output vacio y JSON invalido quedan identificados en response_parse", () => {
+  assert.match(analysis, /!response\.output_text\?\.trim\(\)/);
+  assert.match(analysis, /"response_parse", "empty_output_text"/);
+  assert.match(analysis, /JSON\.parse\(response\.output_text\)/);
+  assert.match(analysis, /"response_parse", "invalid_structured_output"/);
+});
+
+test("categoria invalida queda identificada en category_resolution", () => {
+  assert.match(route, /"category_resolution", "category_lookup_failed"/);
+  assert.match(route, /"category_resolution", "invalid_category"/);
+});
+
+test("error de finalizacion queda identificado en analysis_finalize", () => {
+  assert.match(route, /"analysis_finalize", "complete_failed"/);
+  assert.match(route, /productAnalysisDiagnostic\(error, "openai_request"\)/);
+});
+
+test("logs de diagnostico contienen solo metadatos allowlisted", () => {
+  const responseLog = analysis.slice(analysis.indexOf("console.info"), analysis.indexOf("if (response.status"));
+  for (const field of ["responseStatus", "hasResponseError", "hasIncompleteDetails", "hasOutputText", "hasRefusal"]) assert.match(responseLog, new RegExp(field));
+  for (const forbidden of ["OPENAI_API_KEY", "image.dataUrl", "base64", "headers", "instructions", "input:", "JSON.stringify(response)", "output: response.output"]) assert.doesNotMatch(responseLog, new RegExp(forbidden.replace(".", "\\.")));
+  const failureLog = route.slice(route.indexOf("console.error"), route.indexOf("fail_product_intake_analysis"));
+  assert.match(failureLog, /JSON\.stringify\(productAnalysisDiagnostic/);
+  assert.doesNotMatch(failureLog, /process\.env|request\.headers|image\.|base64|dataUrl|accessToken|refreshToken|JSON\.stringify\(response\)/);
+  assert.match(route, /No se pudo analizar la prenda\. Puedes reintentar cuando quieras\./);
+});
