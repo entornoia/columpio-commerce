@@ -6,6 +6,7 @@ import { Product, ProductInput, PublicationStatus, Variant } from "@/lib/types";
 import { useCatalog } from "./catalog-provider";
 import { Icon } from "./icons";
 import { ProductImageManager } from "./product-image-manager";
+import { DeleteTechnicalDraftButton } from "./delete-technical-draft-button";
 
 const emptyVariant = (): Variant => ({ id: crypto.randomUUID(), variantSku: "", color: "", size: "", stock: 0, active: true });
 const emptyProduct: ProductInput = { sku: "", name: "", description: "", category: "", subcategory: "", price: 0, style: "", season: "", formality: "", fit: "", material: "", occasions: [], active: true, brandId: "", categoryId: null, slug: "", shortDescription: "", publicationStatus: "draft", publishedAt: null, seoTitle: "", seoDescription: "", setupStatus: "complete", setupStartedAt: null, setupUpdatedAt: null, setupExpiresAt: null, analysisStatus: "not_started", analysisCompletedAt: null, analysisModel: null, analysisError: null, variants: [emptyVariant()], images: [] };
@@ -83,5 +84,6 @@ export function ProductForm({ product, intakeMode = false, aiSuggestedFields = [
     {product && form.publicationStatus !== "published" && !intakeMode && <p className="form-help">Guarda primero cualquier cambio pendiente. Publicar valida la versión actualmente guardada.</p>}
     {intakeMode && <p className="form-help">La fotografía y el análisis ya están guardados. Completa SKU, precio y tallas; después de guardar, registra el stock mediante el ajuste auditable. La publicación seguirá siendo una acción posterior.</p>}
     <div className="form-actions"><button type="button" className="text-button" onClick={() => router.back()}>Cancelar</button>{product && form.publicationStatus !== "published" && !intakeMode && <button className="secondary-button" type="button" disabled={saving || publishing} onClick={() => void publish()}>{publishing ? "Publicando…" : "Publicar explícitamente"}</button>}<button className="primary-button" type="submit" disabled={saving || publishing}>{saving ? "Guardando…" : intakeMode ? "Guardar producto" : product ? "Guardar cambios" : "Crear producto"}<Icon name="arrow" size={18}/></button></div>
+    {product && <DeleteTechnicalDraftButton productId={product.id}/>}
   </form>;
 }
