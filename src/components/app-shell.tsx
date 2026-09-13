@@ -10,7 +10,7 @@ import { CatalogProvider } from "./catalog-provider";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const publicPages = ["/", "/login", "/privacy", "/terms", "/data-deletion", "/payment-result"];
+  const publicPages = ["/", "/login", "/forgot-password", "/reset-password", "/privacy", "/terms", "/data-deletion", "/payment-result"];
   const isStorefront = pathname.startsWith("/producto/") || pathname.startsWith("/coleccion/") || pathname === "/carrito" || pathname === "/checkout";
   if (publicPages.includes(pathname) || isStorefront) return children;
   async function logout() {

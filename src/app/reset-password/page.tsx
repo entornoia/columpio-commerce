@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -11,35 +11,67 @@ export default function ResetPasswordPage() {
   const router = useRouter();
   const [state, setState] = useState<RecoveryState>("checking");
   const [error, setError] = useState("");
+  const recoverySessionValidated = useRef(false);
 
   useEffect(() => {
     let active = true;
+    let recoveryEventSeen = false;
+    const initialUrl = new URL(window.location.href);
+    const hasAuthError = initialUrl.searchParams.has("error") || initialUrl.searchParams.has("error_code");
+    const hasRecoveryCode = initialUrl.searchParams.has("code");
+
+    if (hasAuthError || !hasRecoveryCode) {
+      queueMicrotask(() => {
+        if (active) setState("invalid");
+      });
+      return () => {
+        active = false;
+      };
+    }
+
     const supabase = createClient();
 
+    function confirmRecoverySession() {
+      recoverySessionValidated.current = true;
+      if (active) setState("ready");
+    }
+
+    function cleanRecoveryUrl() {
+      const cleanUrl = new URL(window.location.href);
+      ["code", "error", "error_code", "error_description", "sb_flow_id"].forEach((parameter) => {
+        cleanUrl.searchParams.delete(parameter);
+      });
+      window.history.replaceState(window.history.state, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+    }
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event !== "PASSWORD_RECOVERY" || !session) return;
+      recoveryEventSeen = true;
+      cleanRecoveryUrl();
+      confirmRecoverySession();
+    });
+
     async function establishRecoverySession() {
-      const url = new URL(window.location.href);
-      if (url.searchParams.get("error") || url.searchParams.get("error_code")) {
-        if (active) setState("invalid");
+      const { error: initializationError } = await supabase.auth.initialize();
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (!active) return;
+
+      const automaticRecoverySucceeded = !initializationError && !sessionError && Boolean(data.session);
+      if (recoveryEventSeen || automaticRecoverySucceeded) {
+        cleanRecoveryUrl();
+        confirmRecoverySession();
         return;
       }
 
-      const code = url.searchParams.get("code");
-      if (code) {
-        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-        if (exchangeError) {
-          if (active) setState("invalid");
-          return;
-        }
-        window.history.replaceState({}, "", "/reset-password");
-      }
-
-      const { data, error: sessionError } = await supabase.auth.getSession();
-      if (!active) return;
-      setState(!sessionError && data.session ? "ready" : "invalid");
+      recoverySessionValidated.current = false;
+      setState("invalid");
     }
 
     void establishRecoverySession();
-    return () => { active = false; };
+    return () => {
+      active = false;
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -53,12 +85,20 @@ export default function ResetPasswordPage() {
 
     setState("saving");
     const supabase = createClient();
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (!recoverySessionValidated.current || sessionError || !sessionData.session) {
+      recoverySessionValidated.current = false;
+      setState("invalid");
+      return;
+    }
+
     const { error: updateError } = await supabase.auth.updateUser({ password });
     if (updateError) {
       setState("ready");
       setError("No fue posible actualizar la contraseña. Solicita un enlace nuevo.");
       return;
     }
+    recoverySessionValidated.current = false;
     await supabase.auth.signOut();
     router.replace("/login");
     router.refresh();
