@@ -6,14 +6,14 @@ import { Product, ProductInput, PublicationStatus, Variant } from "@/lib/types";
 import { useCatalog } from "./catalog-provider";
 import { Icon } from "./icons";
 import { ProductImageManager } from "./product-image-manager";
-import { DeleteTechnicalDraftButton } from "./delete-technical-draft-button";
+import { ProductManagementPanel } from "./product-management-panel";
 
 const emptyVariant = (): Variant => ({ id: crypto.randomUUID(), variantSku: "", color: "", size: "", stock: 0, active: true });
 const emptyProduct: ProductInput = { sku: "", name: "", description: "", category: "", subcategory: "", price: 0, style: "", season: "", formality: "", fit: "", material: "", occasions: [], active: true, brandId: "", categoryId: null, slug: "", shortDescription: "", publicationStatus: "draft", publishedAt: null, seoTitle: "", seoDescription: "", setupStatus: "complete", setupStartedAt: null, setupUpdatedAt: null, setupExpiresAt: null, analysisStatus: "not_started", analysisCompletedAt: null, analysisModel: null, analysisError: null, variants: [emptyVariant()], images: [] };
 
 export function ProductForm({ product, intakeMode = false, aiSuggestedFields = [] }: { product?: Product; intakeMode?: boolean; aiSuggestedFields?: (keyof ProductInput)[] }) {
   const router = useRouter();
-  const { brands, categories, saveProduct, publishProduct, adjustStock } = useCatalog();
+  const { brands, categories, saveProduct, publishProduct, adjustStock, refresh } = useCatalog();
   const [form, setForm] = useState<ProductInput>(product ? { ...product, variants: product.variants.some((item) => item.active) ? product.variants.filter((item) => item.active).map((item) => ({ ...item })) : [emptyVariant()], occasions: [...product.occasions] } : emptyProduct);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -78,12 +78,14 @@ export function ProductForm({ product, intakeMode = false, aiSuggestedFields = [
     </section>}
     <section className="form-section"><div className="section-heading"><span>03</span><div><h2>Imágenes y estado</h2><p>Estructura preparada para URLs de imágenes de Supabase Storage.</p></div></div>
       {product ? <ProductImageManager productId={product.id} productName={form.name} images={form.images} onChange={(images) => set("images", images)}/> : <div className="image-manager-empty"><strong>Guarda primero el producto</strong><p>Después podrás cargar fotografías usando su identificador definitivo.</p></div>}
-      <div className="form-grid"><label className="toggle-label"><input type="checkbox" checked={form.active} onChange={(e) => set("active", e.target.checked)} /><span/> Producto activo</label></div>
+      {product
+        ? <p className="product-active-readonly">Estado administrativo: <strong>{product.active ? "Activo" : "Inactivo"}</strong>. Usa Gestión del producto para cambiarlo.</p>
+        : <div className="form-grid"><label className="toggle-label"><input type="checkbox" checked={form.active} onChange={(e) => set("active", e.target.checked)} /><span/> Producto activo</label></div>}
       <div className="form-grid"><label>Título SEO <input value={form.seoTitle} onChange={(e) => set("seoTitle", e.target.value)} placeholder="Título para buscadores" /></label><label>Descripción SEO <textarea value={form.seoDescription} onChange={(e) => set("seoDescription", e.target.value)} placeholder="Descripción para buscadores y redes" /></label></div>
     </section>
     {product && form.publicationStatus !== "published" && !intakeMode && <p className="form-help">Guarda primero cualquier cambio pendiente. Publicar valida la versión actualmente guardada.</p>}
     {intakeMode && <p className="form-help">La fotografía y el análisis ya están guardados. Completa SKU, precio y tallas; después de guardar, registra el stock mediante el ajuste auditable. La publicación seguirá siendo una acción posterior.</p>}
     <div className="form-actions"><button type="button" className="text-button" onClick={() => router.back()}>Cancelar</button>{product && form.publicationStatus !== "published" && !intakeMode && <button className="secondary-button" type="button" disabled={saving || publishing} onClick={() => void publish()}>{publishing ? "Publicando…" : "Publicar explícitamente"}</button>}<button className="primary-button" type="submit" disabled={saving || publishing}>{saving ? "Guardando…" : intakeMode ? "Guardar producto" : product ? "Guardar cambios" : "Crear producto"}<Icon name="arrow" size={18}/></button></div>
-    {product && <DeleteTechnicalDraftButton productId={product.id}/>}
+    {product && <ProductManagementPanel productId={product.id} onChanged={refresh}/>}
   </form>;
 }

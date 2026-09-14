@@ -138,8 +138,8 @@ test("race entre lectura y borrado se detecta con lock y revalidación final", (
   assert.match(route, /status: 409/);
 });
 
-test("UI consulta elegibilidad, confirma literalmente y vuelve al listado", () => {
-  assert.match(form, /DeleteTechnicalDraftButton productId=\{product\.id\}/);
+test("saga técnica conserva su UI legacy mientras el formulario usa gestión general", () => {
+  assert.match(form, /ProductManagementPanel productId=\{product\.id\}/);
   assert.match(button, /body\?\.eligibility\?\.eligible === true/);
   assert.match(button, /Este borrador técnico se eliminará definitivamente\. Esta acción no se puede deshacer\./);
   assert.match(button, /method: "DELETE"/);
