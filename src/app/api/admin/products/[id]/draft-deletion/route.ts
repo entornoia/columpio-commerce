@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/storefront/cart-server";
+import { isPostgresUuid, isProductImageStoragePath } from "@/lib/postgres-uuid";
 import { getAdministrativeSession } from "@/lib/supabase/admin-auth";
 import { createServiceClient } from "@/lib/supabase/service";
 
 type StorageEntry = { imageId: string; bucket: string; path: string };
-
-function validUuid(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
 
 function storageEntries(value: unknown, productId: string): StorageEntry[] {
   if (!Array.isArray(value)) throw new Error("El manifiesto de imágenes no es válido.");
@@ -17,7 +14,7 @@ function storageEntries(value: unknown, productId: string): StorageEntry[] {
     const imageId = String(row.imageId ?? "");
     const bucket = String(row.bucket ?? "");
     const path = String(row.path ?? "");
-    if (!validUuid(imageId) || bucket !== "product-images" || !new RegExp(`^${productId}/${imageId}\\.(?:jpg|jpeg|png|webp)$`, "i").test(path)) {
+    if (bucket !== "product-images" || !isProductImageStoragePath(path, productId, imageId)) {
       throw new Error("El manifiesto de imágenes no es válido.");
     }
     return { imageId, bucket, path };
@@ -28,7 +25,7 @@ async function authorizedProductId(params: Promise<{ id: string }>) {
   const { authorized, user } = await getAdministrativeSession();
   if (!authorized || !user) return null;
   const { id } = await params;
-  if (!validUuid(id)) return null;
+  if (!isPostgresUuid(id)) return null;
   return { id, user };
 }
 
@@ -56,7 +53,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     const prepared = preparedData as Record<string, unknown>;
     if (prepared.status === "completed") return NextResponse.json({ deleted: true, idempotent: true });
     const operationId = String(prepared.operationId ?? "");
-    if (!validUuid(operationId)) throw new Error("La operación de borrado no es válida.");
+    if (!isPostgresUuid(operationId)) throw new Error("La operación de borrado no es válida.");
     const images = storageEntries(prepared.storage, identity.id);
 
     if (images.length) {

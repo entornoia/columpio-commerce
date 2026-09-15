@@ -150,6 +150,6 @@ test("handler exige sesión administrativa, same-origin y manifiesto hard-bound"
   assert.match(route, /getAdministrativeSession/);
   assert.match(route, /assertSameOrigin\(request\)/);
   assert.match(route, /bucket !== "product-images"/);
-  assert.match(route, /new RegExp\(`\^\$\{productId\}\/\$\{imageId\}/);
+  assert.match(route, /isProductImageStoragePath\(path, productId, imageId\)/);
   assert.doesNotMatch(route, /console\.|SUPABASE_SERVICE_ROLE_KEY|request\.json/);
 });
